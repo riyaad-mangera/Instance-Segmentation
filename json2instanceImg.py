@@ -139,8 +139,11 @@ def createInstanceImage(annotation, encoding):
         # if this label distinguishs between individual instances,
         # make the id a instance ID
         if labelTuple.hasInstances and not isGroup and id != 255:
-            id = id * 1000 + nbInstances[label]
-            nbInstances[label] += 1
+            # id = id * 1000 + nbInstances[label]
+            # nbInstances[label] += 1
+
+            id = id * 3000 + nbInstances[label]
+            nbInstances[label] += 500
 
         # If the ID is negative that polygon should not be drawn
         if id < 0:

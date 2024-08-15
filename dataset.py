@@ -1,4 +1,5 @@
 import os, glob
+import numpy as np
 import json
 from torch.utils.data import Dataset
 from pathlib import Path
@@ -7,15 +8,15 @@ import pandas as pd
 import torch, torchvision
 import torchvision.tv_tensors
 
-class CityScapedDataset(Dataset):
+class CityScapesDataset(Dataset):
     
-    def __init__(self, images, masks, annotations, label2id, sample_frac = 10):
+    def __init__(self, images, masks, polygons, trainId2label, sample_frac = 10):
 
         # self.images = images.sample(frac = sample_frac)
-        self.images = images.iloc[:sample_frac]
-        self.masks = masks.iloc[:sample_frac]
-        self.annotations = annotations.iloc[:sample_frac]
-        self.label2id = label2id
+        self.images = images[:sample_frac]
+        self.masks = masks[:sample_frac]
+        self.polygons = polygons[:sample_frac]
+        self.label2id = trainId2label
 
     def __len__(self):
         return len(self.images)
@@ -25,11 +26,25 @@ class CityScapedDataset(Dataset):
         labels = torch.Tensor([self.label2id[label] for label in labels])
         labels = labels.to(dtype=torch.int64)
         
-        masks = torchvision.tv_tensors.Mask(self.masks)
+        transforms = torchvision.transforms.PILToTensor()
 
-        bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(masks), format='xyxy', canvas_size=self.images[0].size[::-1])
+        orig_image = Image.open(self.images[index])
+        input_feature = transforms(orig_image)
 
-        return super().__getitem__(index)
+        orig_mask = Image.open(self.masks[index])
+        input_mask = transforms(orig_mask)
+        
+        orig_polygons = self.polygons[index]
+        with open(orig_polygons) as json_file:
+            polygon_coords = json.load(json_file)
+
+        seg_polygons = pd.DataFrame(polygon_coords)
+
+        # masks = torchvision.tv_tensors.Mask(self.masks)
+
+        # bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(masks), format='xyxy', canvas_size=self.images[0].size[::-1])
+
+        return input_feature, input_mask
 
 class CityScapesFiles:
 
@@ -58,14 +73,10 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*.png"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*.png"))
+            self.train_features += city_files
 
-            for file in file_list:
-
-                img = Image.open(file)
-
-                self.train_features.append(img)
-                img.close()
+        # print(len(self.train_features))
 
         #--------------------TEST---------------------------#
 
@@ -76,14 +87,10 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*.png"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*.png"))
+            self.test_features += city_files
 
-            for file in file_list:
-                
-                img = Image.open(file)
-
-                self.test_features.append(img)
-                img.close()
+        # print(len(self.test_features))
 
         #--------------------VAL---------------------------#
 
@@ -94,14 +101,10 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*.png"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*.png"))
+            self.val_features += city_files
 
-            for file in file_list:
-
-                img = Image.open(file)
-
-                self.val_features.append(img)
-                img.close()
+        # print(len(self.val_features))
 
         return (self.train_features, self.test_features, self.val_features)
 
@@ -116,14 +119,10 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*_instanceTrainIds.png"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*_instanceTrainIds.png"))
+            self.train_masks += city_files
 
-            for file in file_list:
-
-                img = Image.open(file)
-
-                self.train_masks.append(img)
-                # img.close()
+        print(len(self.train_masks))
 
         #--------------------TEST---------------------------#
 
@@ -134,14 +133,10 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*_instanceTrainIds.png"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*_instanceTrainIds.png"))
+            self.test_masks += city_files
 
-            for file in file_list:
-                
-                img = Image.open(file)
-
-                self.test_masks.append(img)
-                img.close()
+        print(len(self.test_masks))
 
         #--------------------VAL---------------------------#
 
@@ -152,14 +147,10 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*_instanceTrainIds.png"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*_instanceTrainIds.png"))
+            self.val_masks += city_files
 
-            for file in file_list:
-
-                img = Image.open(file)
-
-                self.val_masks.append(img)
-                img.close()
+        print(len(self.val_masks))
 
         return (self.train_masks, self.test_masks, self.val_masks)
     
@@ -174,15 +165,18 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*.json"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*.json"))
+            self.train_labels += city_files
 
-            for file in file_list:
-                with open(file) as json_file:
+        print(len(self.train_labels))
 
-                    label = json.load(json_file)
-                    label['id'] = Path(file).stem.replace('_gtFine_polygons', '')
+            # for file in file_list:
+            #     with open(file) as json_file:
 
-                    self.train_labels.append(label)
+            #         label = json.load(json_file)
+            #         label['id'] = Path(file).stem.replace('_gtFine_polygons', '')
+
+            #         self.train_labels.append(label)
 
         #--------------------TEST---------------------------#
 
@@ -193,15 +187,10 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*.json"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*.json"))
+            self.test_labels += city_files
 
-            for file in file_list:
-                with open(file) as json_file:
-
-                    label = json.load(json_file)
-                    label['id'] = Path(file).stem.replace('_gtFine_polygons', '')
-
-                    self.test_labels.append(label)
+        print(len(self.test_labels))
 
         #--------------------VAL---------------------------#
 
@@ -212,21 +201,13 @@ class CityScapesFiles:
 
         for city in self.cities:
 
-            file_list = glob.glob(os.path.join(split_dir, city, "*.json"))
+            city_files = glob.glob(os.path.join(split_dir, city, "*.json"))
+            self.val_labels += city_files
 
-            for file in file_list:
-                with open(file) as json_file:
+        print(len(self.val_labels))
 
-                    label = json.load(json_file)
-                    label['id'] = Path(file).stem.replace('_gtFine_polygons', '')
-
-                    self.val_labels.append(label)
-
-        # print(len(self.val_labels))
-        # print(self.test_labels[0])
-
-        self.train_labels = pd.DataFrame(self.train_labels)
-        self.test_labels = pd.DataFrame(self.test_labels)
-        self.val_labels = pd.DataFrame(self.val_labels)
+        # self.train_labels = pd.DataFrame(self.train_labels)
+        # self.test_labels = pd.DataFrame(self.test_labels)
+        # self.val_labels = pd.DataFrame(self.val_labels)
 
         return (self.train_labels, self.test_labels, self.val_labels)
