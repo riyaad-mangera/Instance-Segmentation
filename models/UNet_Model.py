@@ -51,7 +51,7 @@ class DoubleConvolution(nn.Module):
         self.conv_layers = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size = 3, padding = 1),
             nn.ReLU(inplace = True),
-            nn.Conv2d(in_channels, out_channels, kernel_size = 3, padding = 1),
+            nn.Conv2d(out_channels, out_channels, kernel_size = 3, padding = 1),
             nn.ReLU(inplace = True)
         )
 
@@ -82,4 +82,4 @@ class UpSample(nn.Module):
         x1 = self.upsampling_layer(x1)
         x = torch.cat([x1, x2], 1)
 
-        return x
+        return self.conv_layer(x)
