@@ -3,7 +3,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 class MaskRCNN_Model():
-    def __init__(self, model = None, checkpoint = None, num_classes = 21):
+    def __init__(self, model = None, checkpoint = None, num_classes = 8):
 
         self.checkpoint = checkpoint
 

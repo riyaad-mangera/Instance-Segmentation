@@ -65,11 +65,86 @@ class CityScapesDataset(Dataset):
 
         input_mask = np.array(input_mask)
 
-        self.instances_only = True
-
         if self.instances_only:
 
             input_mask[input_mask < 1000] = 0
+
+            instances = np.unique(input_mask)
+            instances = np.delete(instances, np.where(instances == 0.))
+
+            new_mask = torch.zeros(input_mask.shape)
+
+            # print(new_mask.numel())
+            
+            for id in instances:
+
+                # print(id)
+                temp_mask = np.empty(input_mask.shape)
+                    
+                temp_mask[input_mask != id] = 0
+                temp_mask[input_mask == id] = id
+
+                temp_mask = torch.from_numpy(temp_mask)
+                temp_mask = temp_mask.type(torch.LongTensor)
+
+                if torch.count_nonzero(new_mask) == 0:
+                    new_mask = temp_mask.detach().clone()
+
+                else:
+                    new_mask = torch.cat((new_mask, temp_mask))
+
+                # print(new_mask.shape)
+
+                # np.set_printoptions(threshold=1000000000)
+                # print(temp_mask)
+
+            # print(np.unique(input_mask))
+            # print(input_mask.shape)
+
+            # input_mask = torch.from_numpy(input_mask)
+
+            # input_mask = input_mask.type(torch.LongTensor)
+
+            input_mask = new_mask.detach().clone()
+
+            # print(input_mask.shape)
+
+            # torch.set_printoptions(profile="full")
+            # print(new_mask)
+
+            # input_mask = torch.nn.functional.one_hot(input_mask).transpose(0, 3).squeeze(-1)
+
+            instance_masks = torchvision.tv_tensors.Mask(torch.concat([torchvision.tv_tensors.Mask(input_mask, dtype=torch.uint8)]))
+
+            bounding_boxes = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(instance_masks), format="XYXY", canvas_size=(512, 1024))
+            
+            bb = torchvision.ops.masks_to_boxes(instance_masks)
+
+            # print(instance_masks.shape)
+            # print(bounding_boxes.shape)
+
+            # target = {"masks": instance_masks,
+            #           "boxes": torchvision.tv_tensors.BoundingBoxes(bb, format="XYXY", canvas_size=(512, 1024)).to(torch.int32),
+            #           "labels": torch.tensor(instances, dtype = torch.int32)
+            #           }
+
+            target = {}
+            target["boxes"] = torchvision.tv_tensors.BoundingBoxes(bb, format="XYXY", canvas_size=(512, 1024))
+            target["masks"] = instance_masks
+            target["labels"] = torch.tensor(instances, dtype = torch.int64)
+            
+            # print(type(target["boxes"]))
+            
+            # print(type(target))
+
+            return torch.tensor(input_feature, dtype = torch.float32), target
+
+            # return {"image": torch.tensor(input_feature, dtype = torch.float32),
+            #         "target": target 
+            #         # "mask": instance_masks,
+            #         # "bounding_box": bounding_boxes,
+            #         # "labels": torch.tensor(instances, dtype = torch.float32)
+            #         }
 
         else:
 
@@ -77,70 +152,22 @@ class CityScapesDataset(Dataset):
             input_mask[input_mask == -1] = 19
             input_mask[input_mask == 255] = 20
 
-        # print(input_mask)
+            input_mask = torch.from_numpy(input_mask)
 
-        input_mask = torch.from_numpy(input_mask)
+            input_mask = input_mask.type(torch.LongTensor)
 
-        input_mask = input_mask.type(torch.LongTensor)
+            # torch.set_printoptions(profile="full")
+            # print(input_mask)
 
-        torch.set_printoptions(profile="full")
-        print(input_mask)
+            input_mask = torch.nn.functional.one_hot(input_mask, 21).transpose(0, 3).squeeze(-1)
 
-        input_mask = torch.nn.functional.one_hot(input_mask, 21).transpose(0, 3).squeeze(-1)
+            # print(input_mask)
 
-        print(input_mask.shape)
+            print(input_mask.shape)
 
-        masks = torchvision.tv_tensors.Mask(torch.concat([torchvision.tv_tensors.Mask(input_mask, dtype=torch.bool)]))
-        # print(masks[0])
-
-        for mask in masks[11:18]:
-            print(mask.unsqueeze(0).shape)
-            mask = mask.unsqueeze(0)
-            bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(mask), format=torchvision.tv_tensors.BoundingBoxFormat("XYXY"), canvas_size=(1024, 512))
-
-            print(bounding_box)
-
-        # bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(masks), format=torchvision.tv_tensors.BoundingBoxFormat("XYXY"), canvas_size=input_mask.size[::-1])
-
-        print("AAAAAAAAAA")
-
-        # bounding_boxes = torchvision.ops.masks_to_boxes(input_mask)
-        # print(bounding_boxes)
-
-        # print(input_mask.shape)
-
-        # torch.set_printoptions(profile="full")
-        # print(input_mask)
-
-        # input_mask = np.array(input_mask)
-        # input_mask = torch.from_numpy(input_mask)
-        # input_mask = input_mask.type(torch.LongTensor)
-        
-        # orig_polygons = self.polygons[index]
-        # with open(orig_polygons) as json_file:
-        #     polygon_coords = json.load(json_file)
-
-        # seg_polygons = pd.DataFrame(polygon_coords)
-
-        # masks = torchvision.tv_tensors.Mask(self.masks)
-
-        # bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(masks), format='xyxy', canvas_size=self.images[0].size[::-1])
-
-        # return input_feature, input_mask
-        
-        # torch.set_printoptions(profile="full")
-        # print(torch.tensor(input_mask, dtype = torch.long))
-
-        # print(input_feature.shape)
-        # print(input_mask.shape)
-    
-        return {"image": torch.tensor(input_feature, dtype = torch.float32), 
-                "mask": torch.tensor(input_mask, dtype = torch.float32)
-                }
-
-        # return {"image": input_feature,
-        #         "mask": input_mask
-        #         }
+            return {"image": torch.tensor(input_feature, dtype = torch.float32), 
+                    "mask": torch.tensor(input_mask, dtype = torch.float32)
+                    }
 
 class CityScapesFiles:
 
