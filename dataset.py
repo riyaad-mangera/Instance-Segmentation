@@ -10,13 +10,14 @@ import torchvision.tv_tensors
 
 class CityScapesDataset(Dataset):
     
-    def __init__(self, images, masks, polygons, train_labels, sample_frac = 10):
+    def __init__(self, images, masks, polygons, train_labels, sample_frac = 10, instances_only = False):
 
         # self.images = images.sample(frac = sample_frac)
         self.images = images[:sample_frac]
         self.masks = masks[:sample_frac]
         self.polygons = polygons[:sample_frac]
         self.train_labels = train_labels
+        self.instances_only = instances_only
 
     def __len__(self):
         return len(self.images)
@@ -44,7 +45,7 @@ class CityScapesDataset(Dataset):
         # mask_transforms = torchvision.transforms.PILToTensor()
 
         orig_image = Image.open(self.images[index])
-        resized_img = orig_image.resize((512, 512))
+        resized_img = orig_image.resize((1024, 512))
         # input_feature = img_transforms(resized_img)
         input_feature = transforms(resized_img)
 
@@ -59,13 +60,22 @@ class CityScapesDataset(Dataset):
         # print(input_feature)
 
         orig_mask = Image.open(self.masks[index])
-        resized_mask = orig_mask.resize((512, 512))
+        resized_mask = orig_mask.resize((1024, 512))
         input_mask = mask_transforms(resized_mask)
 
         input_mask = np.array(input_mask)
 
-        input_mask[input_mask > 1000] = input_mask[input_mask > 1000] / 1000
-        input_mask[input_mask == 255] = 19
+        self.instances_only = True
+
+        if self.instances_only:
+
+            input_mask[input_mask < 1000] = 0
+
+        else:
+
+            input_mask[input_mask > 1000] = input_mask[input_mask > 1000] / 1000
+            input_mask[input_mask == -1] = 19
+            input_mask[input_mask == 255] = 20
 
         # print(input_mask)
 
@@ -73,10 +83,29 @@ class CityScapesDataset(Dataset):
 
         input_mask = input_mask.type(torch.LongTensor)
 
-        # torch.set_printoptions(profile="full")
-        # print(input_mask.shape)
+        torch.set_printoptions(profile="full")
+        print(input_mask)
 
         input_mask = torch.nn.functional.one_hot(input_mask, 21).transpose(0, 3).squeeze(-1)
+
+        print(input_mask.shape)
+
+        masks = torchvision.tv_tensors.Mask(torch.concat([torchvision.tv_tensors.Mask(input_mask, dtype=torch.bool)]))
+        # print(masks[0])
+
+        for mask in masks[11:18]:
+            print(mask.unsqueeze(0).shape)
+            mask = mask.unsqueeze(0)
+            bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(mask), format=torchvision.tv_tensors.BoundingBoxFormat("XYXY"), canvas_size=(1024, 512))
+
+            print(bounding_box)
+
+        # bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(masks), format=torchvision.tv_tensors.BoundingBoxFormat("XYXY"), canvas_size=input_mask.size[::-1])
+
+        print("AAAAAAAAAA")
+
+        # bounding_boxes = torchvision.ops.masks_to_boxes(input_mask)
+        # print(bounding_boxes)
 
         # print(input_mask.shape)
 

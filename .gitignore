@@ -1,2 +1,4 @@
 dataset/
 test_masks/
+checkpoints/
+wandb/

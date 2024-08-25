@@ -2,12 +2,19 @@ import numpy as np
 import torchvision.tv_tensors
 from torch.utils.data import DataLoader
 from dataset import CityScapesFiles, CityScapesDataset
+from logger import Logger
 import models
 from PIL import Image
 import torch, torchvision
 import matplotlib.pyplot as plt
+import matplotlib.image as mat_img
+import wandb
+import pickle
+from matplotlib.colors import ListedColormap
 from cityscapesscripts.helpers.labels import labels, name2label
 from models import UNet_Model, MaskRCNN_Model
+from PIL import Image
+from PIL import ImageDraw
 
 if torch.cuda.is_available():
     device = torch.device('cuda')
@@ -16,9 +23,9 @@ else:
     
 print(f'Device: {device}')
 
-TRAIN_BATCH_SIZE = 5
+TRAIN_BATCH_SIZE = 1
 TEST_BATCH_SIZE = 1
-VAL_BATCH_SIZE = 5
+VAL_BATCH_SIZE = 1
 
 def dice_coefficient(y_pred, y_true, epsilon = 1e-07):
     y_pred_copy = y_pred.clone()
@@ -32,13 +39,13 @@ def dice_coefficient(y_pred, y_true, epsilon = 1e-07):
     
     return dice_coef
 
-def train(model, train_loader, val_loader, loss_function, optimiser, epochs = 5):
+def train(model, train_loader, val_loader, loss_function, optimiser, logger, epochs = 5):
 
     model.to(device)
     loss_function.to(device)
 
-    average_losses = []
-    average_dice_coef = []
+    average_val_losses = []
+    average_val_dice_coef = []
 
     model.train()
 
@@ -46,8 +53,9 @@ def train(model, train_loader, val_loader, loss_function, optimiser, epochs = 5)
 
         print(f'Epoch: {epoch}')
 
-        epoch_losses = []
-        epoch_dice_coeffs = []
+        train_loss = []
+        batch_losses = []
+        batch_dice_coeffs = []
 
         for idx, batch in enumerate(train_loader):
 
@@ -80,26 +88,91 @@ def train(model, train_loader, val_loader, loss_function, optimiser, epochs = 5)
             loss.backward()
             optimiser.step()
 
+            train_loss.append(loss.item())
+
             # print(loss)
 
-            epoch_losses.append(loss.item())
-            epoch_dice_coeffs.append(dice_coeff.item())
+            with torch.no_grad():
+                model.eval()
+                
+                for val_idx, val_batch in enumerate(val_loader):
+
+                    print(f'Validating Batch {val_idx} of {int(len(val_loader.dataset)/VAL_BATCH_SIZE)}')
+
+                    val_image = val_batch["image"].to(device)
+                    val_mask = val_batch["mask"].to(device)
+
+                    val_y_pred = model(val_image)
+                    val_y_pred = val_y_pred.to(device)
+
+                    val_dice_coeff = dice_coefficient(val_y_pred, val_mask)
+                    val_loss = loss_function(val_y_pred, val_mask)
+
+                    batch_losses.append(val_loss.item())
+                    batch_dice_coeffs.append(val_dice_coeff.item())
+
+                    if (idx == TRAIN_BATCH_SIZE - 1) and (val_idx == VAL_BATCH_SIZE - 1):
+
+                        y_pred_labels_again = torch.argmax(val_y_pred, dim=1)
+                        y_pred_img_arr = y_pred_labels_again.detach().cpu().numpy()
+
+                        # y_pred_img_arr = np.transpose(y_pred_img_arr,(1, 2, 0))
+
+                        y_true_labels_again = torch.argmax(val_mask, dim=1)
+                        y_true_img_arr = y_true_labels_again.detach().cpu().numpy()
+
+                        # y_true_img_arr = np.transpose(y_true_img_arr,(1, 2, 0))
+
+                        class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
+                                        5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
+                                        9:"terrain", 10:"sky", 11:"person", 12:"rider", 
+                                        13:"car", 14:"truck", 15:"bus", 16:"train", 
+                                        17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
+                        
+                        invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
+                                                        std = [ 1/0.5, 1/0.5, 1/0.5 ]),
+                                    torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
+                                                        std = [ 1., 1., 1. ]),
+                                ])
+
+                        orig_img = invTrans(val_image)
+
+                        # img_trans = torchvision.transforms.ToPILImage()
+
+                        orig_img = orig_img.detach().cpu().numpy()
+
+                        original_image = np.transpose(orig_img[0],(1, 2, 0))
+
+                        if logger != '':
+                            logger.log({"validation_predictions" : wandb.Image(original_image, masks={"predictions" : {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}, "ground_truth" : {"mask_data" : y_true_img_arr[0], "class_labels" : class_labels}})})
+
+            model.train()
 
             # print(epoch_losses)
             # print(epoch_dice_coeffs)
 
-        average_losses.append(np.average(epoch_losses))
-        average_dice_coef.append(np.average(epoch_dice_coeffs))
+        average_val_losses.append(np.average(batch_losses))
+        average_val_dice_coef.append(np.average(batch_dice_coeffs))
 
-        print(average_losses)
-        print(average_dice_coef)
+        print(average_val_losses)
+        print(average_val_dice_coef)
 
-    return average_losses, average_dice_coef
+        if logger != '':
+            logger.log({'train_loss': np.sum(train_loss) / len(train_loss),
+                        'validation_loss': np.sum(batch_losses) / len(batch_losses), 
+                        'validation_dice_coefficient': np.sum(batch_dice_coeffs) / len(batch_dice_coeffs)})
 
-def test(model, test_loader, loss_function):
+        if epoch % 2 == 0:    
+            with open(f'./checkpoints/unet_test_2_ep_{epoch}.pkl', 'wb') as file:
+                pickle.dump(model, file)
+
+    return average_val_losses, average_val_dice_coef
+
+def test(model, test_loader, loss_function, logger):
 
     model.eval()
 
+    dice_coefs = []
     average_losses = []
     average_dice_coef = []
 
@@ -116,8 +189,46 @@ def test(model, test_loader, loss_function):
         dice_coeff = dice_coefficient(y_pred, mask)
         loss = loss_function(y_pred, mask)
 
+        dice_coefs.append(dice_coeff.item())
+
         average_losses.append(np.average(loss.item()))
         average_dice_coef.append(np.average(dice_coeff.item()))
+
+        y_pred_labels_again = torch.argmax(y_pred, dim=1)
+        y_pred_img_arr = y_pred_labels_again.detach().cpu().numpy()
+
+        # y_pred_img_arr = np.transpose(y_pred_img_arr,(1, 2, 0))
+
+        y_true_labels_again = torch.argmax(mask, dim=1)
+        y_true_img_arr = y_true_labels_again.detach().cpu().numpy()
+
+        # y_true_img_arr = np.transpose(y_true_img_arr,(1, 2, 0))
+
+        class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
+                        5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
+                        9:"terrain", 10:"sky", 11:"person", 12:"rider", 
+                        13:"car", 14:"truck", 15:"bus", 16:"train", 
+                        17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
+        
+        invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
+                                        std = [ 1/0.5, 1/0.5, 1/0.5 ]),
+                    torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
+                                        std = [ 1., 1., 1. ]),
+                ])
+
+        orig_img = invTrans(image)
+
+        # img_trans = torchvision.transforms.ToPILImage()
+
+        orig_img = orig_img.detach().cpu().numpy()
+
+        original_image = np.transpose(orig_img[0],(1, 2, 0))
+
+        if logger != '':
+            logger.log({"test_predictions" : wandb.Image(original_image, masks={"predictions": {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}})})
+
+    if logger != '':
+        logger.log({'test_dice_coefficients': np.sum(dice_coefs) / len(dice_coefs)})
 
     return average_losses, average_dice_coef, y_pred
 
@@ -144,9 +255,9 @@ for label in labels:
 train_labels = list(set(train_labels))
 # print(train_labels)
 
-train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, train_labels, sample_frac = 30)
-test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, train_labels, sample_frac = 1)
-val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, train_labels, sample_frac = 100)
+train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, train_labels, sample_frac = 1)# 500)
+test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, train_labels, sample_frac = 20)
+val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, train_labels, sample_frac = 1)# 5)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE,
                 'shuffle': True,
@@ -173,26 +284,83 @@ train_dataloader = DataLoader(train_dataset, **train_params)
 test_dataloader = DataLoader(test_dataset, **test_params)
 val_dataloader = DataLoader(val_dataset, **val_params)
 
+logger = ''
+# wandb_logger = Logger(f"unet_test", project='instance-segmentation-project')
+# logger = wandb_logger.get_logger()
+
 model = UNet_Model.UNetModel(in_channels = 3, num_classes = 21) # 21)
 # model_rcnn = MaskRCNN_Model.MaskRCNN_Model(model = None, checkpoint = None, num_classes = 21).get_model()
 
 # print(model_rcnn)
 
-# loss_function = torch.nn.BCEWithLogitsLoss()
-loss_function = torch.nn.CrossEntropyLoss()
+loss_function = torch.nn.BCEWithLogitsLoss()
+# loss_function = torch.nn.CrossEntropyLoss()
 
-optimiser = torch.optim.Adam(model.parameters(), lr = 0.1, weight_decay = 0.0)
+optimiser = torch.optim.Adam(model.parameters(), lr = 0.1, weight_decay = 0.05)
 # optimiser = torch.optim.AdamW(model.parameters(), lr=0.1)
 
-average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, epochs = 10)
+average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 1)
 
 print(average_losses)
 print(average_dice_coef)
 
-test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function)
+# with open(f'./checkpoints/unet_test_ep_30.pkl', 'rb') as file:
+#     model = pickle.load(file)
+
+test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
 
 print(test_losses)
 print(test_dice_coefs)
+
+labels_again = torch.argmax(y_pred, dim=1)
+print(labels_again)
+
+img_arr = labels_again.detach().cpu().numpy()
+print(img_arr[0])
+
+# cmap = ListedColormap([(128, 64,128), (244, 35,232), ( 70, 70, 70), (102,102,156), 
+#                        (190,153,153), (153,153,153), (250,170, 30), (220,220,  0), 
+#                        (107,142, 35), (152,251,152), ( 70,130,180), (220, 20, 60), 
+#                        (255,  0,  0), (  0,  0,142), (  0,  0, 70), (  0, 60,100), 
+#                        (  0, 80,100), (  0,  0,230), (119, 11, 32), (  0,  0,142), 
+#                        (  0,  0,  0) ])
+
+# cmap.set_bad("black")
+# plt.imshow(img_arr[0], cmap=cmap)
+# plt.show()
+
+# img = torchvision.transforms.ToPILImage(mode="I")(labels_again.to(torch.int))
+# img = img.resize((2048, 1024))
+
+# img = img.point(lambda i: (i * 1000) * (1 / 255)).convert("RGB").save("test_masks/test_out.png")
+
+# def visualise_mask(mask):
+
+#     labels_again = torch.argmax(mask, dim=1)
+
+#     img_arr = labels_again.detach().cpu().numpy()
+
+#     cmap = ListedColormap([(128, 64,128), (244, 35,232), ( 70, 70, 70), (102,102,156), 
+#                            (190,153,153), (153,153,153), (250,170, 30), (220,220,  0), 
+#                            (107,142, 35), (152,251,152), ( 70,130,180), (220, 20, 60), 
+#                            (255,  0,  0), (  0,  0,142), (  0,  0, 70), (  0, 60,100), 
+#                            (  0, 80,100), (  0,  0,230), (119, 11, 32), (  0,  0,142), 
+#                            (  0,  0,  0) ])
+    
+#     cmap.set_bad("black")
+#     new_mask = plt.imshow(img_arr[0], cmap=cmap)
+
+#     return new_mask
+
+# for idx, batch in enumerate(val_dataloader):
+#     mask = batch["mask"].to(device)
+
+#     test = visualise_mask(mask)
+#     plt.show()
+
+#-------------------------------------------------------------------------------------------------------#
+
+# img.show()
 
 # unorm = UnNormalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 # pred_mask = unorm(y_pred)
