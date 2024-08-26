@@ -14,7 +14,7 @@ class MaskRCNN_Model():
             self.model = model
 
         self.in_features = self.model.roi_heads.box_predictor.cls_score.in_features
-        self.model.roi_heads.box_predictor = FastRCNNPredictor(in_channels = 3, num_classes = num_classes)
+        self.model.roi_heads.box_predictor = FastRCNNPredictor(in_channels = self.in_features, num_classes = num_classes)
 
         self.in_features_mask = self.model.roi_heads.mask_predictor.conv5_mask.in_channels
         self.hidden_layer = 256

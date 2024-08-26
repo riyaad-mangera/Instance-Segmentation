@@ -20,7 +20,7 @@ if torch.cuda.is_available():
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
-    
+
 print(f'Device: {device}')
 
 TRAIN_BATCH_SIZE = 1
@@ -253,64 +253,29 @@ def train_with_instances(model, train_loader, val_loader, loss_function, optimis
 
             print(f'Epoch: {epoch}, Batch {idx} of {int(len(train_loader.dataset)/TRAIN_BATCH_SIZE)}')
 
-            # image = batch["image"].to(device)
-            # mask = batch["mask"].to(device)
-            # bounding_box = batch["bounding_box"].to(device)
-            # labels = batch["labels"].to(device)
-
-            # targets = batch["target"]
-
-            # target = {"masks": targets["masks"], "boxes": targets["boxes"][0], "labels": targets["labels"]}
-
-            # print(f"AAAAAA {type(targets)}")
-
-            # print(f"AAAAAAAAAAAAAAAAAAAAAAAAAA {targets.items()}")
-
-            target = [{k: v for k, v in targets.items()}]
-
-            print(target[0]["boxes"].shape)
-
-            print(target)
-
-            # print(targets["boxes"][0].shape)
-            # print(targets["boxes"][0])
-
-            # print(image.shape)
-            # print(mask.shape)
-
-            # target = {"masks": mask, "boxes": bounding_box, "labels": labels}
-
-            # print(target)
-
             image = image.to(device)
+            # image = [torch.squeeze(image)]
 
-            for idx, t in enumerate(target):
-                # print("AAAAAAAAAAA")
-                # print(t["boxes"])
+            target = [{k: v for k, v in targets.items()}]            
 
-                target[idx]["boxes"] = torch.squeeze(target[idx]["boxes"]).to(device)
-                target[idx]["masks"] = target[idx]["masks"].to(device)
-                target[idx]["labels"] = target[idx]["labels"].to(device)
+            for index, t in enumerate(target):
 
-                # print(target[idx]["boxes"].shape)
-
-            # print(target)
+                target[index]["boxes"] = torch.squeeze(target[index]["boxes"]).to(device)
+                target[index]["masks"] = torch.squeeze(target[index]["masks"]).to(device)
+                target[index]["labels"] = torch.squeeze(target[index]["labels"]).to(device)
 
             y_pred = model(image, target)
-            y_pred = y_pred.to(device)
+
+            # print(y_pred)
+
+            # y_pred = y_pred.to(device)
 
             optimiser.zero_grad()
             # model.zero_grad()
 
             # dice_coeff = dice_coefficient(y_pred, mask)
 
-            # print(dice_coeff)
-
             # pred_labels = torch.argmax(y_pred, dim=1)
-            # print(pred_labels)
-
-            # print(y_pred.shape)
-            # print(mask.shape)
 
             # loss = loss_function(y_pred, mask)
             # optimiser.zero_grad()
@@ -320,73 +285,88 @@ def train_with_instances(model, train_loader, val_loader, loss_function, optimis
             optimiser.step()
 
             train_loss.append(loss.item())
+            # train_loss.append(y_pred)
 
-            # print(loss)
+            # print(train_loss)
 
             with torch.no_grad():
                 model.eval()
                 
-                for val_idx, val_batch in enumerate(val_loader):
+                for val_idx, (val_image, val_targets) in enumerate(val_loader):
 
                     print(f'Validating Batch {val_idx} of {int(len(val_loader.dataset)/VAL_BATCH_SIZE)}')
 
-                    val_image = val_batch["image"].to(device)
-                    val_mask = val_batch["mask"].to(device)
+                    val_image = val_image.to(device)
+                    # val_image = [torch.squeeze(val_image)]
+
+                    val_target = [{k: v for k, v in val_targets.items()}]            
+
+                    for index, t in enumerate(val_target):
+
+                        val_target[index]["boxes"] = torch.squeeze(val_target[index]["boxes"]).to(device)
+                        val_target[index]["masks"] = torch.squeeze(val_target[index]["masks"]).to(device)
+                        val_target[index]["labels"] = torch.squeeze(val_target[index]["labels"]).to(device)
 
                     val_y_pred = model(val_image)
-                    val_y_pred = val_y_pred.to(device)
 
-                    val_dice_coeff = dice_coefficient(val_y_pred, val_mask)
-                    val_loss = loss_function(val_y_pred, val_mask)
+                    # print(val_y_pred)
+                    # val_loss = sum([loss for loss in val_y_pred.values()])
 
-                    batch_losses.append(val_loss.item())
-                    batch_dice_coeffs.append(val_dice_coeff.item())
+                    # print(val_loss)
 
-                    if (idx == TRAIN_BATCH_SIZE - 1) and (val_idx == VAL_BATCH_SIZE - 1):
+                    # val_y_pred = val_y_pred.to(device)
 
-                        y_pred_labels_again = torch.argmax(val_y_pred, dim=1)
-                        y_pred_img_arr = y_pred_labels_again.detach().cpu().numpy()
+                    # val_dice_coeff = dice_coefficient(val_y_pred, val_mask)
+                    # val_loss = loss_function(val_y_pred, val_mask)
 
-                        # y_pred_img_arr = np.transpose(y_pred_img_arr,(1, 2, 0))
+                    # batch_losses.append(val_loss.item())
+                    # batch_dice_coeffs.append(val_dice_coeff.item())
 
-                        y_true_labels_again = torch.argmax(val_mask, dim=1)
-                        y_true_img_arr = y_true_labels_again.detach().cpu().numpy()
+                    # if (idx == TRAIN_BATCH_SIZE - 1) and (val_idx == VAL_BATCH_SIZE - 1):
 
-                        # y_true_img_arr = np.transpose(y_true_img_arr,(1, 2, 0))
+                    #     y_pred_labels_again = torch.argmax(val_y_pred, dim=1)
+                    #     y_pred_img_arr = y_pred_labels_again.detach().cpu().numpy()
 
-                        class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
-                                        5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
-                                        9:"terrain", 10:"sky", 11:"person", 12:"rider", 
-                                        13:"car", 14:"truck", 15:"bus", 16:"train", 
-                                        17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
+                    #     # y_pred_img_arr = np.transpose(y_pred_img_arr,(1, 2, 0))
+
+                    #     y_true_labels_again = torch.argmax(val_mask, dim=1)
+                    #     y_true_img_arr = y_true_labels_again.detach().cpu().numpy()
+
+                    #     # y_true_img_arr = np.transpose(y_true_img_arr,(1, 2, 0))
+
+                    #     class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
+                    #                     5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
+                    #                     9:"terrain", 10:"sky", 11:"person", 12:"rider", 
+                    #                     13:"car", 14:"truck", 15:"bus", 16:"train", 
+                    #                     17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
                         
-                        invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
-                                                        std = [ 1/0.5, 1/0.5, 1/0.5 ]),
-                                    torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
-                                                        std = [ 1., 1., 1. ]),
-                                ])
+                    #     invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
+                    #                                     std = [ 1/0.5, 1/0.5, 1/0.5 ]),
+                    #                 torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
+                    #                                     std = [ 1., 1., 1. ]),
+                    #             ])
 
-                        orig_img = invTrans(val_image)
+                    #     orig_img = invTrans(val_image)
 
-                        # img_trans = torchvision.transforms.ToPILImage()
+                    #     # img_trans = torchvision.transforms.ToPILImage()
 
-                        orig_img = orig_img.detach().cpu().numpy()
+                    #     orig_img = orig_img.detach().cpu().numpy()
 
-                        original_image = np.transpose(orig_img[0],(1, 2, 0))
+                    #     original_image = np.transpose(orig_img[0],(1, 2, 0))
 
-                        if logger != '':
-                            logger.log({"validation_predictions" : wandb.Image(original_image, masks={"predictions" : {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}, "ground_truth" : {"mask_data" : y_true_img_arr[0], "class_labels" : class_labels}})})
+                    #     if logger != '':
+                    #         logger.log({"validation_predictions" : wandb.Image(original_image, masks={"predictions" : {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}, "ground_truth" : {"mask_data" : y_true_img_arr[0], "class_labels" : class_labels}})})
 
             model.train()
 
             # print(epoch_losses)
             # print(epoch_dice_coeffs)
 
-        average_val_losses.append(np.average(batch_losses))
-        average_val_dice_coef.append(np.average(batch_dice_coeffs))
+        average_val_losses.append(val_y_pred[0])
+        # average_val_dice_coef.append(np.average(batch_dice_coeffs))
 
-        print(average_val_losses)
-        print(average_val_dice_coef)
+        # print(average_val_losses)
+        # print(average_val_dice_coef)
 
         if logger != '':
             logger.log({'train_loss': np.sum(train_loss) / len(train_loss),
@@ -394,10 +374,10 @@ def train_with_instances(model, train_loader, val_loader, loss_function, optimis
                         'validation_dice_coefficient': np.sum(batch_dice_coeffs) / len(batch_dice_coeffs)})
 
         if epoch % 2 == 0:    
-            with open(f'./checkpoints/unet_test_2_ep_{epoch}.pkl', 'wb') as file:
+            with open(f'./checkpoints/mask_rcnn_test_ep_{epoch}.pkl', 'wb') as file:
                 pickle.dump(model, file)
 
-    return average_val_losses, average_val_dice_coef
+    return average_val_losses, train_loss
 
 feature_dir = r"./dataset/features/leftImg8bit"
 label_dir = r"./dataset/labels/gtFine_trainvaltest/gtFine"
@@ -424,9 +404,9 @@ train_labels = list(set(train_labels))
 
 instances_only = True
 
-train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, train_labels, sample_frac = 1, instances_only = instances_only) # 500)
+train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, train_labels, sample_frac = 20, instances_only = instances_only) # 500)
 test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, train_labels, sample_frac = 20, instances_only = instances_only)
-val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, train_labels, sample_frac = 1, instances_only = instances_only) # 5)
+val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, train_labels, sample_frac = 5, instances_only = instances_only) # 5)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE,
                 'shuffle': True,
@@ -469,24 +449,29 @@ optimiser = torch.optim.Adam(model_rcnn.parameters(), lr = 0.1, weight_decay = 0
 # optimiser = torch.optim.AdamW(model.parameters(), lr=0.1)
 
 # average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 1)
-average_losses, average_dice_coef = train_with_instances(model_rcnn, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 1)
+average_losses, train_loss = train_with_instances(model_rcnn, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 25)
 
 print(average_losses)
-print(average_dice_coef)
+# print(average_dice_coef)
+print("--------------------AAAAAAAAAA----------------------")
+print(train_loss)
 
 # with open(f'./checkpoints/unet_test_ep_30.pkl', 'rb') as file:
 #     model = pickle.load(file)
 
-test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
+# test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
 
-print(test_losses)
-print(test_dice_coefs)
+# print(test_losses)
+# print(test_dice_coefs)
 
-labels_again = torch.argmax(y_pred, dim=1)
-print(labels_again)
+# labels_again = torch.argmax(y_pred, dim=1)
+# print(labels_again)
 
-img_arr = labels_again.detach().cpu().numpy()
-print(img_arr[0])
+# img_arr = labels_again.detach().cpu().numpy()
+# print(img_arr[0])
+
+
+#-------------------------------------------------------------------
 
 # cmap = ListedColormap([(128, 64,128), (244, 35,232), ( 70, 70, 70), (102,102,156), 
 #                        (190,153,153), (153,153,153), (250,170, 30), (220,220,  0), 
