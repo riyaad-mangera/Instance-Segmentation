@@ -124,41 +124,33 @@ class CityScapesDataset(Dataset):
             # print(instance_masks.to(torch.uint8))
             bb = torchvision.ops.masks_to_boxes(instance_masks)
 
+            delete_idxs = []
+
             for idx, box in enumerate(bb):
                 
                 if bb[idx][0] == bb[idx][2]:
 
-                    print("AAAAAAAAAAAAAAAAAAAAAA")
-
-                    value = bb[idx][0].detach().clone() + 1.
-
-                    bb[idx] = torch.Tensor([bb[idx][0], bb[idx][1], value, bb[idx][3]])
-
-                    # bb[idx][2] == value
+                    delete_idxs.append(idx)
 
                 elif bb[idx][1] == bb[idx][3]:
 
-                    print("EEEEEEEEEEEEEEEEEEEEEE")
+                    delete_idxs.append(idx)
 
-                    value = bb[idx][1].detach().clone() + 1.
+            if len(delete_idxs) > 0:
 
-                    bb[idx] = torch.Tensor([bb[idx][0], bb[idx][1], bb[idx][3], value])
-
-            # print(bb)
-
-            # print(instance_masks.shape)
-            # print(bounding_boxes.shape)
-
-            # target = {"masks": instance_masks,
-            #           "boxes": torchvision.tv_tensors.BoundingBoxes(bb, format="XYXY", canvas_size=(512, 1024)).to(torch.int32),
-            #           "labels": torch.tensor(instances, dtype = torch.int32)
-            #           }
+                for idx in delete_idxs:
+                    bb = torch.cat((bb[:idx], bb[idx + 1:]))
+                    instance_masks = torch.cat((instance_masks[:idx], instance_masks[idx + 1:]))
+                    instances = np.delete(instances, idx)
 
             labels = [(label / 1000) - 11 for label in instances]
+            
+            # torch.set_printoptions(profile="full")
+            # print(torch.tensor(instance_masks, dtype = torch.int64))
 
             target = {}
             target["boxes"] = torchvision.tv_tensors.BoundingBoxes(bb, format="XYXY", canvas_size=(512, 1024))
-            target["masks"] = instance_masks
+            target["masks"] = torch.tensor(instance_masks, dtype = torch.uint8)
             target["labels"] = torch.tensor(labels, dtype = torch.int64)
 
             # print(target["labels"])
@@ -166,6 +158,8 @@ class CityScapesDataset(Dataset):
             # print(type(target["boxes"]))
             
             # print(type(target))
+
+            # print(target["boxes"])
 
             return torch.tensor(input_feature, dtype = torch.float32), target
 
