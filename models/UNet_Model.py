@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
+import random
 
 class UNetModel(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
+
+        self.name = f"unet_model_{''.join(random.sample([str(x) for x in range(10)], 4))}"
 
         #Contracting Path
         self.down_conv_1 = DownSample(in_channels = in_channels, out_channels = 64)
