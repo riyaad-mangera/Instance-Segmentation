@@ -16,7 +16,6 @@ class CityScapesDataset(Dataset):
         self.images = images[:sample_frac]
         self.masks = masks[:sample_frac]
         self.polygons = polygons[:sample_frac]
-        self.train_labels = train_labels
         self.instances_only = instances_only
 
     def __len__(self):
@@ -82,8 +81,13 @@ class CityScapesDataset(Dataset):
 
             instance_masks = torchvision.tv_tensors.Mask(torch.concat([torchvision.tv_tensors.Mask(input_mask, dtype=torch.bool)]))
 
+            if list(instance_masks.shape) == [1, 512, 1024]:
+                print("---A---")
+                return (torch.tensor(0), {"boxes": "INVALID"})
+
             # torch.set_printoptions(profile="full")
             # print(instance_masks.to(torch.uint8))
+            # print(instance_masks.shape)
             bb = torchvision.ops.masks_to_boxes(instance_masks)
 
             delete_idxs = []
@@ -100,10 +104,14 @@ class CityScapesDataset(Dataset):
 
             if len(delete_idxs) > 0:
 
-                for idx in delete_idxs:
+                for idx in reversed(delete_idxs):
                     bb = torch.cat((bb[:idx], bb[idx + 1:]))
                     instance_masks = torch.cat((instance_masks[:idx], instance_masks[idx + 1:]))
                     instances = np.delete(instances, idx)
+
+            if list(bb.shape) == [4,]:
+                print("---E---")
+                return (torch.tensor(0), {"boxes": "INVALID"})
 
             labels = [(label / 1000) - 10 for label in instances]
             # labels.insert(0, 0)
@@ -126,18 +134,29 @@ class CityScapesDataset(Dataset):
 
             return torch.tensor(input_feature, dtype = torch.float32), target
 
-            # return {"image": torch.tensor(input_feature, dtype = torch.float32),
-            #         "target": target 
-            #         # "mask": instance_masks,
-            #         # "bounding_box": bounding_boxes,
-            #         # "labels": torch.tensor(instances, dtype = torch.float32)
-            #         }
-
         else:
 
-            input_mask[input_mask > 1000] = input_mask[input_mask > 1000] / 1000
-            input_mask[input_mask == -1] = 19
-            input_mask[input_mask == 255] = 20
+            # input_mask[input_mask > 1000] = input_mask[input_mask > 1000] / 1000
+            # input_mask[input_mask == -1] = 19
+            # input_mask[input_mask == 255] = 20
+
+            # input_mask = torch.from_numpy(input_mask)
+
+            # input_mask = input_mask.type(torch.LongTensor)
+
+            # # torch.set_printoptions(profile="full")
+            # # print(input_mask)
+
+            # input_mask = torch.nn.functional.one_hot(input_mask, 21).transpose(0, 3).squeeze(-1)
+
+            # # print(input_mask)
+
+            # # print(input_mask.shape)
+
+            #---------------------------------------------------------------------------------#
+
+            input_mask[input_mask < 1000] = 0
+            input_mask[input_mask > 1000] = (input_mask[input_mask > 1000] / 1000) - 10
 
             input_mask = torch.from_numpy(input_mask)
 
@@ -146,11 +165,7 @@ class CityScapesDataset(Dataset):
             # torch.set_printoptions(profile="full")
             # print(input_mask)
 
-            input_mask = torch.nn.functional.one_hot(input_mask, 21).transpose(0, 3).squeeze(-1)
-
-            # print(input_mask)
-
-            # print(input_mask.shape)
+            input_mask = torch.nn.functional.one_hot(input_mask, 9).transpose(0, 3).squeeze(-1)
 
             return {"image": torch.tensor(input_feature, dtype = torch.float32), 
                     "mask": torch.tensor(input_mask, dtype = torch.float32)

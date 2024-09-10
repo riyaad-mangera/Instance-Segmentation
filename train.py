@@ -13,8 +13,12 @@ import pickle
 from matplotlib.colors import ListedColormap
 from cityscapesscripts.helpers.labels import labels, name2label
 from models import UNet_Model, MaskRCNN_Model
+from DiceLoss import DiceLoss
 from PIL import Image
 from PIL import ImageDraw
+import os
+
+# os.environ['https_proxy'] = 'http://hpc-proxy00.city.ac.uk:3128'
 
 if torch.cuda.is_available():
     device = torch.device('cuda')
@@ -23,11 +27,11 @@ else:
 
 print(f'Device: {device}')
 
-TRAIN_BATCH_SIZE = 2
+TRAIN_BATCH_SIZE = 1
 TEST_BATCH_SIZE = 1
 VAL_BATCH_SIZE = 1
 
-def dice_coefficient(y_pred, y_true, epsilon = 1e-07):
+def dice_coefficient(y_pred, y_true, epsilon = 1e-6):
     y_pred_copy = y_pred.clone()
 
     y_pred_copy[y_pred_copy < 0] = 0
@@ -37,6 +41,30 @@ def dice_coefficient(y_pred, y_true, epsilon = 1e-07):
     union = abs(torch.sum(y_pred_copy) + torch.sum(y_true))
     dice_coef = (2. * intersection + epsilon) / (union + epsilon)
     
+    return dice_coef
+
+# Altered Sorensen–Dice coefficient with epsilon for smoothing
+def dice_coefficient_generalised(y_pred, y_true, epsilon=1e-6):
+
+    # y_pred = y_pred.detach().cpu()
+    # y_true = y_true.detach().cpu()
+
+    # y_true_flatten = np.asarray(y_true).astype(np.bool)
+    # y_pred_flatten = np.asarray(y_pred).astype(np.bool)
+
+    # if not np.sum(y_true_flatten) + np.sum(y_pred_flatten):
+    #     return 1.0
+
+    # return (2. * np.sum(y_true_flatten * y_pred_flatten)) / (np.sum(y_true_flatten) + np.sum(y_pred_flatten) + epsilon)
+
+    prediction = y_pred.view(-1)
+    target = y_true.view(-1)
+
+    intersection = torch.sum(prediction * target)
+    union = torch.sum(prediction) + torch.sum(target)
+
+    dice_coef = 1 - ((2. * intersection + epsilon) / (union + epsilon))
+
     return dice_coef
 
 def train(model, train_loader, val_loader, loss_function, optimiser, logger, epochs = 5, start_epoch = 0):
@@ -129,12 +157,27 @@ def train(model, train_loader, val_loader, loss_function, optimiser, logger, epo
 
                         # y_true_img_arr = np.transpose(y_true_img_arr,(1, 2, 0))
 
-                        class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
-                                        5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
-                                        9:"terrain", 10:"sky", 11:"person", 12:"rider", 
-                                        13:"car", 14:"truck", 15:"bus", 16:"train", 
-                                        17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
+                        # class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
+                        #                 5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
+                        #                 9:"terrain", 10:"sky", 11:"person", 12:"rider", 
+                        #                 13:"car", 14:"truck", 15:"bus", 16:"train", 
+                        #                 17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
+
+                        # class_labels = {1: "road", 2: "sidewalk", 3: "building", 4:"wall", 5:"fence", 
+                        #                 6:"pole", 7:"traffic_light", 8:"traffic_sign", 9:"vegetation", 
+                        #                 10:"terrain", 11:"sky", 12:"person", 13:"rider", 
+                        #                 14:"car", 15:"truck", 16:"bus", 17:"train", 
+                        #                 18:"motorcycle", 19:"bicycle", 20:"license_plate"
+                        #                 }
+
+                        class_labels = {1: "person", 2: "rider", 3: "car", 4: "truck",
+                                        5: "bus", 6: "train", 7: "motorcycle", 8: "bicycle"
+                                        }
                         
+                        # class_labels = {0: "person", 1: "rider", 2: "car", 3: "truck",
+                        #                 4: "bus", 5: "train", 6: "motorcycle", 7: "bicycle"
+                        #                 }
+
                         invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
                                                         std = [ 1/0.5, 1/0.5, 1/0.5 ]),
                                     torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
@@ -149,26 +192,27 @@ def train(model, train_loader, val_loader, loss_function, optimiser, logger, epo
 
                         original_image = np.transpose(orig_img[0],(1, 2, 0))
 
-                        if logger != '':
-                            logger.log({"validation_predictions" : wandb.Image(original_image, masks={"predictions" : {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}, "ground_truth" : {"mask_data" : y_true_img_arr[0], "class_labels" : class_labels}})})
+                        # if logger != '':
+                        #     logger.log({"validation_predictions" : wandb.Image(original_image, masks={"predictions" : {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}, "ground_truth" : {"mask_data" : y_true_img_arr[0], "class_labels" : class_labels}})})
 
             model.train()
 
             # print(epoch_losses)
             # print(epoch_dice_coeffs)
 
-        average_val_losses.append(np.average(batch_losses))
-        average_val_dice_coef.append(np.average(batch_dice_coeffs))
+        # average_val_losses.append(np.average(batch_losses))
+        # average_val_dice_coef.append(np.average(batch_dice_coeffs))
 
-        print(average_val_losses)
-        print(average_val_dice_coef)
+        # print(average_val_losses)
+        # print(average_val_dice_coef)
 
         if logger != '':
-            logger.log({'train_loss': np.sum(train_loss) / len(train_loss),
+            logger.log({"validation_predictions" : wandb.Image(original_image, masks={"predictions" : {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}, "ground_truth" : {"mask_data" : y_true_img_arr[0], "class_labels" : class_labels}}),
+                        'train_loss': np.sum(train_loss) / len(train_loss),
                         'validation_loss': np.sum(batch_losses) / len(batch_losses), 
                         'validation_dice_coefficient': np.sum(batch_dice_coeffs) / len(batch_dice_coeffs)})
 
-        if epoch % 5 == 0:    
+        if epoch % 10 == 0 or epoch == epochs - 1:    
             with open(f'./checkpoints/{model.name}_ep_{epoch + start_epoch}.pkl', 'wb') as file:
                 pickle.dump(model, file)
 
@@ -210,12 +254,27 @@ def test(model, test_loader, loss_function, logger):
 
         # y_true_img_arr = np.transpose(y_true_img_arr,(1, 2, 0))
 
-        class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
-                        5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
-                        9:"terrain", 10:"sky", 11:"person", 12:"rider", 
-                        13:"car", 14:"truck", 15:"bus", 16:"train", 
-                        17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
+        # class_labels = {0: "road", 1: "sidewalk", 2: "building", 3:"wall", 4:"fence", 
+        #                 5:"pole", 6:"traffic_light", 7:"traffic_sign", 8:"vegetation", 
+        #                 9:"terrain", 10:"sky", 11:"person", 12:"rider", 
+        #                 13:"car", 14:"truck", 15:"bus", 16:"train", 
+        #                 17:"motorcycle", 18:"bicycle", 19:"license_plate", 20:"unlabeled"}
+
+        # class_labels = {1: "road", 2: "sidewalk", 3: "building", 4:"wall", 5:"fence", 
+        #                 6:"pole", 7:"traffic_light", 8:"traffic_sign", 9:"vegetation", 
+        #                 10:"terrain", 11:"sky", 12:"person", 13:"rider", 
+        #                 14:"car", 15:"truck", 16:"bus", 17:"train", 
+        #                 18:"motorcycle", 19:"bicycle", 20:"license_plate"
+        #                 }
+
+        class_labels = {1: "person", 2: "rider", 3: "car", 4: "truck", 
+                        5: "bus", 6: "train", 7: "motorcycle", 8: "bicycle"
+                        }
         
+        # class_labels = {0: "person", 1: "rider", 2: "car", 3: "truck",
+        #                 4: "bus", 5: "train", 6: "motorcycle", 7: "bicycle"
+        #                 }
+
         invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
                                         std = [ 1/0.5, 1/0.5, 1/0.5 ]),
                     torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
@@ -304,7 +363,7 @@ def iou_score(y_pred, y_true):
 
     return score
 
-def train_with_instances(model, train_loader, val_loader, loss_function, optimiser, logger, epochs = 5):
+def train_with_instances(model, train_loader, val_loader, loss_function, optimiser, logger, epochs = 5, start_epoch = 0):
     model.to(device)
     loss_function.to(device)
 
@@ -324,8 +383,213 @@ def train_with_instances(model, train_loader, val_loader, loss_function, optimis
 
             print(f'Epoch: {epoch}, Batch {idx} of {int(len(train_loader.dataset)/TRAIN_BATCH_SIZE)}')
 
+            # print(image)
+
+            # print(list(torch.tensor(0).shape))
+            if list(image.shape) == [1]:
+                print("Invalid inputs, skipping...")
+                continue
+
+            else:
+
+                # print(list(image.shape))
+
+                image = image.to(device)
+                # image = [torch.squeeze(image)]
+
+                target = [{k: v for k, v in targets.items()}]            
+
+                for index, t in enumerate(target):
+
+                    target[index]["boxes"] = torch.squeeze(target[index]["boxes"]).to(device)
+                    target[index]["masks"] = torch.squeeze(target[index]["masks"]).to(device)
+                    target[index]["labels"] = torch.squeeze(target[index]["labels"]).to(device)
+
+                # # Skip images with no boxes
+                # if list(target[0]["boxes"].shape) == [4,]:
+                #     print("No boxes")
+                #     continue
+
+                y_pred = model(image, target)
+
+                # print(y_pred)
+
+                # y_pred = y_pred.to(device)
+
+                optimiser.zero_grad()
+                # model.zero_grad()
+
+                # dice_coeff = dice_coefficient(y_pred, mask)
+
+                # pred_labels = torch.argmax(y_pred, dim=1)
+
+                # loss = loss_function(y_pred, mask)
+                # optimiser.zero_grad()
+
+                loss = sum([loss for loss in y_pred.values()])
+                loss.backward()
+                optimiser.step()
+
+                train_loss.append(loss.item())
+                # train_loss.append(y_pred)
+
+                # print(train_loss)
+
+                with torch.no_grad():
+                    model.eval()
+                    
+                    for val_idx, (val_image, val_targets) in enumerate(val_loader):
+
+                        print(f'\tValidating Batch {val_idx} of {int(len(val_loader.dataset)/VAL_BATCH_SIZE)}')
+
+                        if list(val_image.shape) == [1]:
+                            print("Invalid inputs, skipping...")
+                            continue
+
+                        else:
+
+                            val_image = val_image.to(device)
+                            # val_image = [torch.squeeze(val_image)]
+
+                            val_target = [{k: v for k, v in val_targets.items()}]            
+
+                            for index, t in enumerate(val_target):
+
+                                val_target[index]["boxes"] = torch.squeeze(val_target[index]["boxes"]).to(device)
+                                val_target[index]["masks"] = torch.squeeze(val_target[index]["masks"]).to(device)
+                                val_target[index]["labels"] = torch.squeeze(val_target[index]["labels"]).to(device)
+
+                            val_y_pred = model(val_image)
+
+                            # print(val_y_pred)
+
+                            # val_loss = sum([loss for loss in val_y_pred.values()])
+
+                            batch_losses.append(val_y_pred)
+
+                            # iou = iou_score(val_y_pred[0]["masks"], val_target[0]["masks"])
+                            iou = -1
+
+                            batch_iou.append(iou)
+                            
+                            if (idx == TRAIN_BATCH_SIZE - 1) and (val_idx == VAL_BATCH_SIZE - 1):
+
+                                invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
+                                                                                                            std = [ 1/0.5, 1/0.5, 1/0.5 ]),
+                                            torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
+                                                                            std = [ 1., 1., 1. ]),
+                                        ])
+
+                                orig_img = invTrans(val_image)
+
+                                # img_trans = torchvision.transforms.ToPILImage()
+
+                                orig_img = orig_img.detach().cpu().numpy()
+
+                                original_image = np.transpose(orig_img[0],(1, 2, 0))
+
+                                display_ids = {"person" : 1, "rider" : 2, "car" : 3, "truck" : 4,
+                                            "bus" : 5, "train" : 6, "motorcycle": 7, "bicycle" : 8
+                                            }
+
+
+                                class_id_to_label = {1: "person", 2: "rider", 3: "car", 4: "truck",
+                                                    5: "bus", 6: "train", 7: "motorcycle", 8: "bicycle"
+                                                    }
+                                
+                                # print(val_y_pred[0]["boxes"])
+
+                                # print(val_y_pred[0]["masks"])
+
+                                boxes = val_y_pred[0]["boxes"].tolist()
+                                labels = val_y_pred[0]["labels"].tolist()
+
+                                true_labels = val_target[0]["labels"].tolist()
+
+                                # print(val_y_pred[0]["scores"])
+                                prob_threshold = 0.0
+
+                                if len(boxes) > 0:
+
+                                    thres_prob_masks = val_y_pred[0]["masks"] > prob_threshold
+
+                                    # print(val_y_pred[0]["masks"])
+                                    # print(thres_prob_masks)
+
+                                    # print(val_y_pred[0]["masks"])
+
+                                    # print(val_y_pred[0]["masks"].shape)
+
+                                    y_pred_labels_again = torch.argmax(torch.squeeze(thres_prob_masks.to(torch.int64), 1), dim=0)
+                                    y_true_labels_again = torch.argmax(val_target[0]["masks"], dim=0)
+
+                                    # print(type(y_pred_labels_again))
+
+                                    # y_pred_img_arr = y_pred_labels_again.detach().cpu().numpy()
+                                    masks = y_pred_labels_again.detach().cpu().numpy()
+                                    true_masks = y_true_labels_again.detach().cpu().numpy()
+
+                                    # print(len(true_labels))
+
+                                    for true_idx in range(1, len(true_labels)):
+                                        # print(idx)
+                                        true_masks[true_masks == true_idx] = true_labels[true_idx]
+
+                                    for pred_idx in range(1, len(labels)):
+                                        masks[masks == pred_idx] = labels[pred_idx]
+
+                                    # print(true_masks.shape)
+                                    # print(masks.shape)
+
+                                    true_labels = val_target[0]["labels"].tolist()
+                                    # print(labels)
+
+                                    bb = bounding_boxes(boxes, labels, class_id_to_label, pred=True)
+                                    true_bb = bounding_boxes(val_target[0]["boxes"], true_labels, class_id_to_label, pred=False)
+
+                                    logger.log({"validation_predictions" : wandb.Image(original_image, 
+                                                                                    boxes = {"predictions": {"box_data": bb, "class_labels" : class_id_to_label}, "ground_truth" : {"box_data": true_bb, "class_labels" : class_id_to_label}},
+                                                                                    masks={"predictions": {"mask_data" : masks, "class_labels" : class_id_to_label}, "ground_truth": {"mask_data" : true_masks, "class_labels" : class_id_to_label}}
+                                                                                    )})
+                                    
+                            del val_image
+                            del val_targets
+                            torch.cuda.empty_cache()
+                    
+                    # print(torch.cuda.memory_summary())
+                    torch.cuda.empty_cache()
+
+                model.train()
+
+        if logger != '':
+            logger.log({'train_loss': np.sum(train_loss) / len(train_loss),
+                        # 'validation_loss': np.sum(batch_losses) / len(batch_losses),
+                        'validation_iou': np.sum(batch_iou) / len(batch_iou) #np.sum(batch_iou) / len(batch_iou)
+                        })
+
+        if epoch != 0 and epoch % 1 == 0:    
+            with open(f'./checkpoints/{model.name}_test_ep_{epoch + start_epoch}.pkl', 'wb') as file:
+                pickle.dump(model, file)
+
+    return "average_val_losses", train_loss
+
+def test_with_instances(model, test_loader, loss_function, logger):
+    model.eval()
+
+    batch_losses = []
+    batch_iou = []
+                    
+    for idx, (image, targets) in enumerate(test_loader):
+
+        print(f'Testing Batch {idx} of {int(len(test_loader.dataset)/TEST_BATCH_SIZE)}')
+
+        if list(image.shape) == [1]:
+            print("Invalid inputs, skipping...")
+            continue
+
+        else:
+
             image = image.to(device)
-            # image = [torch.squeeze(image)]
 
             target = [{k: v for k, v in targets.items()}]            
 
@@ -335,169 +599,91 @@ def train_with_instances(model, train_loader, val_loader, loss_function, optimis
                 target[index]["masks"] = torch.squeeze(target[index]["masks"]).to(device)
                 target[index]["labels"] = torch.squeeze(target[index]["labels"]).to(device)
 
-            y_pred = model(image, target)
+            y_pred = model(image)
 
-            # print(y_pred)
+            batch_losses.append(y_pred)
 
-            # y_pred = y_pred.to(device)
+            # iou = iou_score(y_pred[0]["masks"], target[0]["masks"])
+            iou = -1
 
-            optimiser.zero_grad()
-            # model.zero_grad()
+            batch_iou.append(iou)
 
-            # dice_coeff = dice_coefficient(y_pred, mask)
+            invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
+                                                                                                            std = [ 1/0.5, 1/0.5, 1/0.5 ]),
+                                            torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
+                                                                            std = [ 1., 1., 1. ]),
+                                        ])
 
-            # pred_labels = torch.argmax(y_pred, dim=1)
+            orig_img = invTrans(image)
 
-            # loss = loss_function(y_pred, mask)
-            # optimiser.zero_grad()
+            orig_img = orig_img.detach().cpu().numpy()
 
-            loss = sum([loss for loss in y_pred.values()])
-            loss.backward()
-            optimiser.step()
+            original_image = np.transpose(orig_img[0],(1, 2, 0))
 
-            train_loss.append(loss.item())
-            # train_loss.append(y_pred)
+            class_id_to_label = {1: "person", 2: "rider", 3: "car", 4: "truck",
+                                5: "bus", 6: "train", 7: "motorcycle", 8: "bicycle"
+                                }
+            
+            # print(val_y_pred[0]["boxes"])
 
-            # print(train_loss)
+            # print(val_y_pred[0]["masks"])
 
-            with torch.no_grad():
-                model.eval()
+            boxes = y_pred[0]["boxes"].tolist()
+            labels = y_pred[0]["labels"].tolist()
+
+            true_labels = target[0]["labels"].tolist()
+
+            prob_threshold = 0
+
+            if len(boxes) > 0:
+
+                thres_prob_masks = y_pred[0]["masks"] > prob_threshold
+
+                y_pred_labels_again = torch.argmax(torch.squeeze(thres_prob_masks.to(torch.int64), 1), dim=0)
+                y_true_labels_again = torch.argmax(target[0]["masks"], dim=0)
+
+                masks = y_pred_labels_again.detach().cpu().numpy()
+                true_masks = y_true_labels_again.detach().cpu().numpy()
+
+                for true_idx in range(1, len(true_labels)):
+                    # print(idx)
+                    true_masks[true_masks == true_idx] = true_labels[true_idx]
+
+                for pred_idx in range(1, len(labels)):
+                    masks[masks == pred_idx] = labels[pred_idx]
+
+                true_labels = target[0]["labels"].tolist()
+
+                bb = bounding_boxes(boxes, labels, class_id_to_label, pred=True)
+                true_bb = bounding_boxes(target[0]["boxes"], true_labels, class_id_to_label, pred=False)
+
+                logger.log({"validation_predictions" : wandb.Image(original_image, 
+                                                                boxes = {"predictions": {"box_data": bb, "class_labels" : class_id_to_label}, "ground_truth" : {"box_data": true_bb, "class_labels" : class_id_to_label}},
+                                                                masks={"predictions": {"mask_data" : masks, "class_labels" : class_id_to_label}, "ground_truth": {"mask_data" : true_masks, "class_labels" : class_id_to_label}}
+                                                                )})
                 
-                for val_idx, (val_image, val_targets) in enumerate(val_loader):
-
-                    print(f'\tValidating Batch {val_idx} of {int(len(val_loader.dataset)/VAL_BATCH_SIZE)}')
-
-                    val_image = val_image.to(device)
-                    # val_image = [torch.squeeze(val_image)]
-
-                    val_target = [{k: v for k, v in val_targets.items()}]            
-
-                    for index, t in enumerate(val_target):
-
-                        val_target[index]["boxes"] = torch.squeeze(val_target[index]["boxes"]).to(device)
-                        val_target[index]["masks"] = torch.squeeze(val_target[index]["masks"]).to(device)
-                        val_target[index]["labels"] = torch.squeeze(val_target[index]["labels"]).to(device)
-
-                    val_y_pred = model(val_image, val_target)
-
-                    # print(val_y_pred)
-
-                    # val_loss = sum([loss for loss in val_y_pred.values()])
-
-                    batch_losses.append(val_y_pred)
-
-                    # iou = iou_score(val_y_pred[0]["masks"], val_target[0]["masks"])
-                    iou = -1
-
-                    batch_iou.append(iou)
-                    
-                    if (idx == TRAIN_BATCH_SIZE - 1) and (val_idx == VAL_BATCH_SIZE - 1):
-
-                        invTrans = torchvision.transforms.Compose([torchvision.transforms.Normalize(mean = [ 0., 0., 0. ],
-                                                                                                    std = [ 1/0.5, 1/0.5, 1/0.5 ]),
-                                    torchvision.transforms.Normalize(mean = [ -0.5, -0.5, -0.5 ],
-                                                                    std = [ 1., 1., 1. ]),
-                                ])
-
-                        orig_img = invTrans(val_image)
-
-                        # img_trans = torchvision.transforms.ToPILImage()
-
-                        orig_img = orig_img.detach().cpu().numpy()
-
-                        original_image = np.transpose(orig_img[0],(1, 2, 0))
-
-                        display_ids = {"person" : 1, "rider" : 2, "car" : 3, "truck" : 4,
-                                    "bus" : 5, "train" : 6, "motorcycle": 7, "bicycle" : 8
-                                    }
-
-
-                        class_id_to_label = {1: "person", 2: "rider", 3: "car", 4: "truck",
-                                            5: "bus", 6: "train", 7: "motorcycle", 8: "bicycle"
-                                            }
-                        
-                        # print(val_y_pred[0]["boxes"])
-
-                        # print(val_y_pred[0]["masks"])
-
-                        boxes = val_y_pred[0]["boxes"].tolist()
-                        labels = val_y_pred[0]["labels"].tolist()
-
-                        true_labels = val_target[0]["labels"].tolist()
-
-                        if len(boxes) > 0:
-
-                            # print(val_y_pred[0]["masks"])
-
-                            # print(val_y_pred[0]["masks"].shape)
-
-                            y_pred_labels_again = torch.argmax(torch.squeeze(val_y_pred[0]["masks"], 1), dim=0)
-                            y_true_labels_again = torch.argmax(val_target[0]["masks"], dim=0)
-
-                            # print(type(y_pred_labels_again))
-
-                            # y_pred_img_arr = y_pred_labels_again.detach().cpu().numpy()
-                            masks = y_pred_labels_again.detach().cpu().numpy()
-                            true_masks = y_true_labels_again.detach().cpu().numpy()
-
-                            # print(len(true_labels))
-
-                            for true_idx in range(1, len(true_labels)):
-                                # print(idx)
-                                true_masks[true_masks == true_idx] = true_labels[true_idx]
-
-                            for pred_idx in range(1, len(labels)):
-                                masks[masks == pred_idx] = labels[pred_idx]
-
-                            # print(true_masks.shape)
-                            # print(masks.shape)
-
-                            true_labels = val_target[0]["labels"].tolist()
-                            # print(labels)
-
-                            bb = bounding_boxes(boxes, labels, class_id_to_label, pred=True)
-                            true_bb = bounding_boxes(val_target[0]["boxes"], true_labels, class_id_to_label, pred=False)
-
-                            logger.log({"validation_predictions" : wandb.Image(original_image, 
-                                                                            boxes = {"predictions": {"box_data": bb, "class_labels" : class_id_to_label}, "ground_truth" : {"box_data": true_bb, "class_labels" : class_id_to_label}},
-                                                                            masks={"predictions": {"mask_data" : masks, "class_labels" : class_id_to_label}, "ground_truth": {"mask_data" : true_masks, "class_labels" : class_id_to_label}}
-                                                                            )})
-                            
-                            # print[masks[10000]]
-
-                        #     if logger != '':
-                        #         logger.log({"validation_predictions" : wandb.Image(original_image, masks={"predictions" : {"mask_data" : y_pred_img_arr[0], "class_labels" : class_labels}, "ground_truth" : {"mask_data" : y_true_img_arr[0], "class_labels" : class_labels}})})
-
-                    del val_image
-                    del val_targets
-                    torch.cuda.empty_cache()
-                
-                # print(torch.cuda.memory_summary())
+                del y_pred_labels_again
+                del y_true_labels_again
+                del masks
+                del true_masks
+                del true_labels
+                del bb
+                del true_bb
                 torch.cuda.empty_cache()
+                
+            del image
+            del orig_img
+            del original_image
+            del targets
+            del target
+            del y_pred
+            torch.cuda.empty_cache()
 
-            model.train()
+def load_checkpoint(file_name):
+    with open(f'./checkpoints/{file_name}.pkl', 'rb') as file:
+        model = pickle.load(file)
 
-            # print(epoch_losses)
-            # print(epoch_dice_coeffs)
-
-        # average_val_losses.append(0)
-        # average_val_iou.append(np.average(batch_iou))
-        # average_val_dice_coef.append(np.average(batch_dice_coeffs))
-
-        # print(average_val_losses)
-        # print(average_val_dice_coef)
-
-        if logger != '':
-            logger.log({'train_loss': np.sum(train_loss) / len(train_loss),
-                        # 'validation_loss': np.sum(batch_losses) / len(batch_losses),
-                        'validation_iou': np.sum(batch_iou) / len(batch_iou) #np.sum(batch_iou) / len(batch_iou)
-                        })
-
-        if epoch != 0 and epoch % 5 == 0:    
-            with open(f'./checkpoints/mask_rcnn_test_ep_{epoch}.pkl', 'wb') as file:
-                pickle.dump(model, file)
-
-    return "average_val_losses", train_loss
+    return model
 
 feature_dir = r"./dataset/features/leftImg8bit"
 
@@ -525,9 +711,9 @@ train_labels = list(set(train_labels))
 
 instances_only = False
 
-train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, train_labels, sample_frac = 30, instances_only = instances_only) # 500)
-test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, train_labels, sample_frac = 15, instances_only = instances_only)
-val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, train_labels, sample_frac = 10, instances_only = instances_only) # 5)
+train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, train_labels, sample_frac = 300, instances_only = instances_only) # 500)
+test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, train_labels, sample_frac = 20, instances_only = instances_only)
+val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, train_labels, sample_frac = 20, instances_only = instances_only) # 5)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE,
                 'shuffle': True,
@@ -554,29 +740,34 @@ train_dataloader = DataLoader(train_dataset, **train_params)
 test_dataloader = DataLoader(test_dataset, **test_params)
 val_dataloader = DataLoader(val_dataset, **val_params)
 
-lr = 1e-3
+lr = 1e-3 # 3e-5 # 1e-3 for mask rcnn (maybe 1e-5?)
 weight_decay = 0
 
-model = UNet_Model.UNetModel(in_channels = 3, num_classes = 21)
+model = UNet_Model.UNetModel(in_channels = 3, num_classes = 9) # 9) # 21)
 
-# with open(f'./checkpoints/unet_model_4670_ep_45.pkl', 'rb') as file:
-#     model = pickle.load(file)
-
-start_epoch = 0
-
-print(model.name)
-print(f"lr: {lr}")
-print(f"weight_decay: {weight_decay}")
+model = load_checkpoint("unet_model_2169_ep_49")
 
 # model_rcnn = MaskRCNN_Model.MaskRCNN_Model(model = None, checkpoint = None, num_classes = 9).get_model()
 
 # with open(f'./checkpoints/mask_rcnn_test_ep_15.pkl', 'rb') as file:
 #     model_rcnn = pickle.load(file)
 
-loss_function = torch.nn.BCEWithLogitsLoss()
+start_epoch = 0
+
+# pos_weight = torch.ones([9, 512, 1024])
+# pos_weight[0] = 0
+# loss_function = torch.nn.BCEWithLogitsLoss() #pos_weight=pos_weight)
+
+# weights = torch.tensor([0.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0])
+weights = torch.tensor([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 
+                        5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 
+                        0.0, 0.0])
+loss_function = torch.nn.CrossEntropyLoss()
+# loss_function = DiceLoss()
+# loss_function = torch.nn.MSELoss()
 
 optimiser = torch.optim.Adam(model.parameters(), lr = lr, weight_decay = weight_decay) #1e-3, weight_decay = 0)
-# mask_rcnn_optimiser = torch.optim.Adam(model_rcnn.parameters(), lr = 1e-5, weight_decay = 0)
+# mask_rcnn_optimiser = torch.optim.Adam(model_rcnn.parameters(), lr = lr, weight_decay = weight_decay)
 
 # optimiser = torch.optim.AdamW(model.parameters(), lr=0.1)
 
@@ -584,18 +775,30 @@ logger = ''
 wandb_logger = Logger(f"{model.name}_test", project='instance-segmentation-project')
 logger = wandb_logger.get_logger()
 
-average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 25, start_epoch = start_epoch)
-# average_losses, train_loss = train_with_instances(model_rcnn, train_dataloader, val_dataloader, loss_function, mask_rcnn_optimiser, logger, epochs = 30)
+print(model.name)
+print(type(loss_function))
+print(f"lr: {lr}")
+print(f"weight_decay: {weight_decay}")
+
+print(f'Device: {device}')
+
+# average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 30, start_epoch = start_epoch)
+# average_losses, train_loss = train_with_instances(model_rcnn, train_dataloader, val_dataloader, loss_function, mask_rcnn_optimiser, logger, epochs = 30, start_epoch = start_epoch)
 
 # print(average_losses)
 # print(average_dice_coef)
 print("--------------------AAAAAAAAAA----------------------")
 # print(train_loss)
 
-# with open(f'./checkpoints/unet_model_4670_ep_24.pkl', 'rb') as file:
+# with open(f'./checkpoints/unet_model_9701_ep_199.pkl', 'rb') as file:
 #     model = pickle.load(file)
 
 test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
+
+# with open(f'./checkpoints/mask_rcnn_test_ep_25.pkl', 'rb') as file:
+#     model_rcnn = pickle.load(file)
+
+# test_with_instances(model_rcnn, val_dataloader, loss_function, logger)
 
 # print(test_losses)
 # print(test_dice_coefs)
@@ -608,130 +811,3 @@ test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_functio
 
 
 #-------------------------------------------------------------------
-
-# cmap = ListedColormap([(128, 64,128), (244, 35,232), ( 70, 70, 70), (102,102,156), 
-#                        (190,153,153), (153,153,153), (250,170, 30), (220,220,  0), 
-#                        (107,142, 35), (152,251,152), ( 70,130,180), (220, 20, 60), 
-#                        (255,  0,  0), (  0,  0,142), (  0,  0, 70), (  0, 60,100), 
-#                        (  0, 80,100), (  0,  0,230), (119, 11, 32), (  0,  0,142), 
-#                        (  0,  0,  0) ])
-
-# cmap.set_bad("black")
-# plt.imshow(img_arr[0], cmap=cmap)
-# plt.show()
-
-# img = torchvision.transforms.ToPILImage(mode="I")(labels_again.to(torch.int))
-# img = img.resize((2048, 1024))
-
-# img = img.point(lambda i: (i * 1000) * (1 / 255)).convert("RGB").save("test_masks/test_out.png")
-
-# def visualise_mask(mask):
-
-#     labels_again = torch.argmax(mask, dim=1)
-
-#     img_arr = labels_again.detach().cpu().numpy()
-
-#     cmap = ListedColormap([(128, 64,128), (244, 35,232), ( 70, 70, 70), (102,102,156), 
-#                            (190,153,153), (153,153,153), (250,170, 30), (220,220,  0), 
-#                            (107,142, 35), (152,251,152), ( 70,130,180), (220, 20, 60), 
-#                            (255,  0,  0), (  0,  0,142), (  0,  0, 70), (  0, 60,100), 
-#                            (  0, 80,100), (  0,  0,230), (119, 11, 32), (  0,  0,142), 
-#                            (  0,  0,  0) ])
-    
-#     cmap.set_bad("black")
-#     new_mask = plt.imshow(img_arr[0], cmap=cmap)
-
-#     return new_mask
-
-# for idx, batch in enumerate(val_dataloader):
-#     mask = batch["mask"].to(device)
-
-#     test = visualise_mask(mask)
-#     plt.show()
-
-#-------------------------------------------------------------------------------------------------------#
-
-# img.show()
-
-# unorm = UnNormalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-# pred_mask = unorm(y_pred)
-
-# torch.set_printoptions(profile="full")
-# print(y_pred)
-
-# transforms = torchvision.transforms.ToPILImage()
-# img = transforms(y_pred)
-
-# img.show()
-
-# print(torch.squeeze(y_pred, dim=0))
-# print(torch.squeeze(y_pred, dim=0).shape)
-
-# palette = torch.tensor([2 ** 25 - 1, 2 ** 15 - 1, 2 ** 21 - 1])
-# colors = torch.as_tensor([i for i in range(21)])[:, None] * palette
-# colors = (colors % 255).numpy().astype("uint8")
-
-# # plot the semantic segmentation predictions of 21 classes in each color
-# r = Image.fromarray(torch.squeeze(y_pred, dim=0).byte().cpu().numpy()).resize((512, 512))
-# r.putpalette(colors)
-
-# import matplotlib.pyplot as plt
-# plt.imshow(r)
-
-# print(train_anno)
-
-# print(name2label)
-
-# transforms = torchvision.transforms.Compose([torchvision.transforms.PILToTensor()])
-# masks = transforms(train_masks)
-
-# print(type(train_masks[0]))
-
-# masks = torchvision.tv_tensors.Mask(torch.concat([torchvision.tv_tensors.Mask(torchvision.transforms.PILToTensor()(train_masks[0]), dtype=torch.bool)])) # train_masks[0])
-# print(masks)
-
-# bounding_box = torchvision.tv_tensors.BoundingBoxes(data=torchvision.ops.masks_to_boxes(masks), format=torchvision.tv_tensors.BoundingBoxFormat("CXCYWH"), canvas_size=train_masks[0].size[::-1])
-
-# print(bounding_box)
-
-# print(labels)
-
-# lbs = [11]
-# lbs_tens = torch.Tensor(lbs)
-
-# torchvision.utils.draw_bounding_boxes(masks.to(dtype=torch.uint8), bounding_box.to(dtype=torch.uint8), lbs_tens)
-
-# img = Image.open("./test_masks/02_00_050.png")
-
-# transforms = torchvision.transforms.Compose([torchvision.transforms.PILToTensor()])
-# transforms = torchvision.transforms.PILToTensor()
-# mask = transforms(img)
-
-# # torch.set_printoptions(threshold=np.inf)
-# print(mask.shape)
-
-
-# img = np.array(Image.open("./test_masks/02_00_050.png"))
-
-# # transforms = torchvision.transforms.Compose([torchvision.transforms.PILToTensor()])
-# transforms = torchvision.transforms.ToTensor()
-# mask = transforms(img)
-
-# mask = torch.max(mask, dim=2)[0]
-
-# # torch.set_printoptions(threshold=np.inf)
-# print(mask.type(torch.long).shape)
-
-
-# bb = torchvision.ops.masks_to_boxes(mask.to(dtype=torch.uint8))
-
-# print(bb)
-
-# boxes = torchvision.utils.draw_bounding_boxes(mask.to(dtype=torch.uint8), bb, colors="red")
-
-# img.close()
-
-# img2 = torchvision.transforms.ToPILImage()(boxes) 
-  
-# # display output 
-# img2.show() 

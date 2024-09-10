@@ -9,22 +9,22 @@ class UNetModel(nn.Module):
         self.name = f"unet_model_{''.join(random.sample([str(x) for x in range(10)], 4))}"
 
         #Contracting Path
-        self.down_conv_1 = DownSample(in_channels = in_channels, out_channels = 64)
-        self.down_conv_2 = DownSample(in_channels = 64, out_channels = 128)
-        self.down_conv_3 = DownSample(in_channels = 128, out_channels = 256)
-        self.down_conv_4 = DownSample(in_channels = 256, out_channels = 512)
+        self.down_conv_1 = DownSample(in_channels = in_channels, out_channels = 32)
+        self.down_conv_2 = DownSample(in_channels = 32, out_channels = 64)
+        self.down_conv_3 = DownSample(in_channels = 64, out_channels = 128)
+        self.down_conv_4 = DownSample(in_channels = 128, out_channels = 256)
 
         #Mid Point
-        self.centre_conv = DoubleConvolution(512, 1024)
+        self.centre_conv = DoubleConvolution(256, 512)
 
         #Expanding Path
-        self.up_conv_1 = UpSample(in_channels = 1024, out_channels = 512)
-        self.up_conv_2 = UpSample(in_channels = 512, out_channels = 256)
-        self.up_conv_3 = UpSample(in_channels = 256, out_channels = 128)
-        self.up_conv_4 = UpSample(in_channels = 128, out_channels = 64)
+        self.up_conv_1 = UpSample(in_channels = 512, out_channels = 256)
+        self.up_conv_2 = UpSample(in_channels = 256, out_channels = 128)
+        self.up_conv_3 = UpSample(in_channels = 128, out_channels = 64)
+        self.up_conv_4 = UpSample(in_channels = 64, out_channels = 32)
 
         #Final Convolution
-        self.final_conv = nn.Conv2d(in_channels = 64, out_channels = num_classes, kernel_size = 1)
+        self.final_conv = nn.Conv2d(in_channels = 32, out_channels = num_classes, kernel_size = 1)
 
     def forward(self, x):
         #Contracting Path
@@ -53,6 +53,7 @@ class DoubleConvolution(nn.Module):
 
         self.conv_layers = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size = 3, padding = 1),
+            nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace = True),
             nn.Conv2d(out_channels, out_channels, kernel_size = 3, padding = 1),
             nn.ReLU(inplace = True)
