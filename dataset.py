@@ -10,7 +10,7 @@ import torchvision.tv_tensors
 
 class CityScapesDataset(Dataset):
     
-    def __init__(self, images, masks, polygons, train_labels, sample_frac = 10, instances_only = False):
+    def __init__(self, images, masks, polygons, sample_frac = 10, instances_only = False):
 
         # self.images = images.sample(frac = sample_frac)
         self.images = images[:sample_frac]

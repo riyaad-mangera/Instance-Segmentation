@@ -12,11 +12,12 @@ import wandb
 import pickle
 from matplotlib.colors import ListedColormap
 from cityscapesscripts.helpers.labels import labels, name2label
-from models import UNet_Model, MaskRCNN_Model
+from models import UNet_Model, UNet3PlusAttn_Model, MaskRCNN_Model, YOLO_Model
 from DiceLoss import DiceLoss
 from PIL import Image
 from PIL import ImageDraw
 import os
+from ultralytics import YOLO
 
 # os.environ['https_proxy'] = 'http://hpc-proxy00.city.ac.uk:3128'
 
@@ -109,7 +110,7 @@ def train(model, train_loader, val_loader, loss_function, optimiser, logger, epo
             # print(pred_labels)
 
             # print(y_pred.shape)
-            # print(mask.shape)
+            print(mask.shape)
 
             loss = loss_function(y_pred, mask)
             # optimiser.zero_grad()
@@ -696,24 +697,11 @@ train_imgs, test_imgs, val_imgs = dataset.load_features(feature_dir)
 train_masks, test_masks, val_masks = dataset.load_masks(label_dir)
 train_polygons, test_polygons, val_polygons = dataset.load_labels(label_dir)
 
-# print(len(train_imgs) + len(test_imgs) + len(val_imgs))
-# print(len(train_masks) + len(test_masks) + len(val_masks))
-# print(len(train_anno) + len(test_anno) + len(val_anno))
-
-# print(labels)
-train_labels = []
-trainId2label   = { label.trainId : label for label in reversed(labels) }
-for label in labels:
-    train_labels.append(label.trainId)
-
-train_labels = list(set(train_labels))
-# print(train_labels)
-
 instances_only = False
 
-train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, train_labels, sample_frac = 300, instances_only = instances_only) # 500)
-test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, train_labels, sample_frac = 20, instances_only = instances_only)
-val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, train_labels, sample_frac = 20, instances_only = instances_only) # 5)
+train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, sample_frac = 3, instances_only = instances_only) # 500)
+test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, sample_frac = 20, instances_only = instances_only)
+val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, sample_frac = 1, instances_only = instances_only) # 5)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE,
                 'shuffle': True,
@@ -744,8 +732,9 @@ lr = 1e-3 # 3e-5 # 1e-3 for mask rcnn (maybe 1e-5?)
 weight_decay = 0
 
 model = UNet_Model.UNetModel(in_channels = 3, num_classes = 9) # 9) # 21)
+# model = UNet3PlusAttn_Model.UNet3PlusAttnModel(in_channels = 3, num_classes = 9)
 
-model = load_checkpoint("unet_model_2169_ep_49")
+# model = load_checkpoint("unet_model_2169_ep_49")
 
 # model_rcnn = MaskRCNN_Model.MaskRCNN_Model(model = None, checkpoint = None, num_classes = 9).get_model()
 
@@ -772,8 +761,8 @@ optimiser = torch.optim.Adam(model.parameters(), lr = lr, weight_decay = weight_
 # optimiser = torch.optim.AdamW(model.parameters(), lr=0.1)
 
 logger = ''
-wandb_logger = Logger(f"{model.name}_test", project='instance-segmentation-project')
-logger = wandb_logger.get_logger()
+# wandb_logger = Logger(f"{model.name}_test", project='instance-segmentation-project')
+# logger = wandb_logger.get_logger()
 
 print(model.name)
 print(type(loss_function))
@@ -782,7 +771,7 @@ print(f"weight_decay: {weight_decay}")
 
 print(f'Device: {device}')
 
-# average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 30, start_epoch = start_epoch)
+average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 10, start_epoch = start_epoch)
 # average_losses, train_loss = train_with_instances(model_rcnn, train_dataloader, val_dataloader, loss_function, mask_rcnn_optimiser, logger, epochs = 30, start_epoch = start_epoch)
 
 # print(average_losses)
@@ -793,7 +782,7 @@ print("--------------------AAAAAAAAAA----------------------")
 # with open(f'./checkpoints/unet_model_9701_ep_199.pkl', 'rb') as file:
 #     model = pickle.load(file)
 
-test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
+# test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
 
 # with open(f'./checkpoints/mask_rcnn_test_ep_25.pkl', 'rb') as file:
 #     model_rcnn = pickle.load(file)
@@ -811,3 +800,21 @@ test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_functio
 
 
 #-------------------------------------------------------------------
+
+# yolo_model = YOLO_Model.YOLOModel().get_model()
+
+# print(yolo_model)
+
+# results = yolo_model.train(data="data.yaml", epochs = 5, batch = 1, device = device)
+
+# print("train done")
+
+# results = yolo_model.val()
+
+# print("val done")
+
+# results = yolo_model("https://ultralytics.com/images/bus.jpg")
+
+# print("predict done")
+
+# success = yolo_model.export(format="onnx")

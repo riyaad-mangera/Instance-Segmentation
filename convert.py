@@ -30,6 +30,7 @@ def convert_cityscapes_to_yolov8(json_path, output_dir, class_mapping):
 
     # Create output text file
     image_name = os.path.basename(json_path).replace('.json', '.txt')
+    image_name = image_name.replace('_gtFine_polygons', '_leftImg8bit')
     output_path = os.path.join(output_dir, image_name)
     
     with open(output_path, 'w') as out_file:
@@ -44,6 +45,44 @@ def process_folder(folder_path, class_mapping):
                 convert_cityscapes_to_yolov8(json_path, root, class_mapping)
 
 # Example class mapping based on trainId from Cityscapes labels
+# class_mapping = {
+#     'unlabeled': 255,
+#     'ego vehicle': 255,
+#     'rectification border': 255,
+#     'out of roi': 255,
+#     'static': 255,
+#     'dynamic': 255,
+#     'ground': 255,
+#     'road': 0,
+#     'sidewalk': 1,
+#     'parking': 255,
+#     'rail track': 255,
+#     'building': 2,
+#     'wall': 255,
+#     'fence': 3,
+#     'guard rail': 255,
+#     'bridge': 255,
+#     'tunnel': 255,
+#     'pole':255,
+#     'polegroup': 255,
+#     'traffic light': 255,
+#     'traffic sign': 255,
+#     'vegetation': 4,
+#     'terrain': 255,
+#     'sky': 255,
+#     'person': 255,
+#     'rider': 255,
+#     'car': 5,
+#     'truck': 255,
+#     'bus': 255,
+#     'caravan': 255,
+#     'trailer': 255,
+#     'train': 255,
+#     'motorcycle': 255,
+#     'bicycle': 255,
+#     'license plate': 255,
+# }
+
 class_mapping = {
     'unlabeled': 255,
     'ego vehicle': 255,
@@ -57,28 +96,28 @@ class_mapping = {
     'parking': 255,
     'rail track': 255,
     'building': 2,
-    'wall': 255,
-    'fence': 3,
+    'wall': 3,
+    'fence': 4,
     'guard rail': 255,
     'bridge': 255,
     'tunnel': 255,
-    'pole':255,
+    'pole': 5,
     'polegroup': 255,
-    'traffic light': 255,
-    'traffic sign': 255,
-    'vegetation': 4,
-    'terrain': 255,
-    'sky': 255,
-    'person': 255,
-    'rider': 255,
-    'car': 5,
-    'truck': 255,
-    'bus': 255,
+    'traffic light': 6,
+    'traffic sign': 7,
+    'vegetation': 8,
+    'terrain': 9,
+    'sky': 10,
+    'person': 11,
+    'rider': 12,
+    'car': 13,
+    'truck': 14,
+    'bus': 15,
     'caravan': 255,
     'trailer': 255,
-    'train': 255,
-    'motorcycle': 255,
-    'bicycle': 255,
+    'train': 16,
+    'motorcycle': 17,
+    'bicycle': 18,
     'license plate': 255,
 }
 

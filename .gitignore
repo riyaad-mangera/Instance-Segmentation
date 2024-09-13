@@ -1,5 +1,9 @@
 dataset/
+datasets/
 test_masks/
 checkpoints/
 wandb/
 scripts/
+runs/
+/bus.jpg
+/yolov8n.pt
