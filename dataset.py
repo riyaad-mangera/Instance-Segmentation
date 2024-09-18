@@ -17,6 +17,7 @@ class CityScapesDataset(Dataset):
         self.masks = masks[:sample_frac]
         self.polygons = polygons[:sample_frac]
         self.instances_only = instances_only
+        self.resize_dim = (512, 256) #(1024, 512)
 
     def __len__(self):
         return len(self.images)
@@ -30,14 +31,15 @@ class CityScapesDataset(Dataset):
         # mask_transforms = torchvision.transforms.PILToTensor()
 
         orig_image = Image.open(self.images[index])
-        resized_img = orig_image.resize((1024, 512))
+        resized_img = orig_image.resize(self.resize_dim)
         # input_feature = img_transforms(resized_img)
         input_feature = transforms(resized_img)
 
         mean, std = input_feature.mean([1,2]), input_feature.std([1,2])
 
         img_transforms = torchvision.transforms.Compose([torchvision.transforms.ToTensor(), 
-                                                         torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) #(0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                                                        #  torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) #(0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                                                         torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)) #(0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
                                                          ])
 
         input_feature = img_transforms(resized_img)
@@ -45,7 +47,7 @@ class CityScapesDataset(Dataset):
         # print(input_feature)
 
         orig_mask = Image.open(self.masks[index])
-        resized_mask = orig_mask.resize((1024, 512))
+        resized_mask = orig_mask.resize(self.resize_dim)
         input_mask = mask_transforms(resized_mask)
 
         input_mask = np.array(input_mask)

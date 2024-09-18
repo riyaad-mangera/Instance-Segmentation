@@ -12,12 +12,13 @@ import wandb
 import pickle
 from matplotlib.colors import ListedColormap
 from cityscapesscripts.helpers.labels import labels, name2label
-from models import UNet_Model, UNet3PlusAttn_Model, MaskRCNN_Model, YOLO_Model
+from models import UNet_Model, UNet3PlusAttn_Model, MaskRCNN_Model#, YOLO_Model
 from DiceLoss import DiceLoss
+from UNet3PlusLoss import UNet3PlusLoss
 from PIL import Image
 from PIL import ImageDraw
 import os
-from ultralytics import YOLO
+# from ultralytics import YOLO
 
 # os.environ['https_proxy'] = 'http://hpc-proxy00.city.ac.uk:3128'
 
@@ -28,7 +29,7 @@ else:
 
 print(f'Device: {device}')
 
-TRAIN_BATCH_SIZE = 1
+TRAIN_BATCH_SIZE = 2
 TEST_BATCH_SIZE = 1
 VAL_BATCH_SIZE = 1
 
@@ -110,7 +111,7 @@ def train(model, train_loader, val_loader, loss_function, optimiser, logger, epo
             # print(pred_labels)
 
             # print(y_pred.shape)
-            print(mask.shape)
+            # print(mask.shape)
 
             loss = loss_function(y_pred, mask)
             # optimiser.zero_grad()
@@ -245,8 +246,17 @@ def test(model, test_loader, loss_function, logger):
         average_losses.append(np.average(loss.item()))
         average_dice_coef.append(np.average(dice_coeff.item()))
 
+        #Threshold of only confident predictions
+        # print(y_pred)
+        # prob = torch.sigmoid(y_pred)
+        # print(prob)
+        # prob[prob < 0.90] = 0.0
+        # # print(y_pred)
+
         y_pred_labels_again = torch.argmax(y_pred, dim=1)
         y_pred_img_arr = y_pred_labels_again.detach().cpu().numpy()
+
+        # print(torch.eq(y_pred_labels_again, torch.argmax(prob, dim=1)))
 
         # y_pred_img_arr = np.transpose(y_pred_img_arr,(1, 2, 0))
 
@@ -699,9 +709,9 @@ train_polygons, test_polygons, val_polygons = dataset.load_labels(label_dir)
 
 instances_only = False
 
-train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, sample_frac = 3, instances_only = instances_only) # 500)
+train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, sample_frac = 10, instances_only = instances_only) # 500)
 test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, sample_frac = 20, instances_only = instances_only)
-val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, sample_frac = 1, instances_only = instances_only) # 5)
+val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, sample_frac = 20, instances_only = instances_only) # 5)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE,
                 'shuffle': True,
@@ -728,13 +738,13 @@ train_dataloader = DataLoader(train_dataset, **train_params)
 test_dataloader = DataLoader(test_dataset, **test_params)
 val_dataloader = DataLoader(val_dataset, **val_params)
 
-lr = 1e-3 # 3e-5 # 1e-3 for mask rcnn (maybe 1e-5?)
+lr = 1e-4 # 3e-5 # 1e-3 for mask rcnn (maybe 1e-5?)
 weight_decay = 0
 
 model = UNet_Model.UNetModel(in_channels = 3, num_classes = 9) # 9) # 21)
 # model = UNet3PlusAttn_Model.UNet3PlusAttnModel(in_channels = 3, num_classes = 9)
 
-# model = load_checkpoint("unet_model_2169_ep_49")
+model = load_checkpoint("unet3+Attn_model_5319_ep_50")
 
 # model_rcnn = MaskRCNN_Model.MaskRCNN_Model(model = None, checkpoint = None, num_classes = 9).get_model()
 
@@ -754,6 +764,7 @@ weights = torch.tensor([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
 loss_function = torch.nn.CrossEntropyLoss()
 # loss_function = DiceLoss()
 # loss_function = torch.nn.MSELoss()
+# loss_function = UNet3PlusLoss(device = device)
 
 optimiser = torch.optim.Adam(model.parameters(), lr = lr, weight_decay = weight_decay) #1e-3, weight_decay = 0)
 # mask_rcnn_optimiser = torch.optim.Adam(model_rcnn.parameters(), lr = lr, weight_decay = weight_decay)
@@ -761,8 +772,8 @@ optimiser = torch.optim.Adam(model.parameters(), lr = lr, weight_decay = weight_
 # optimiser = torch.optim.AdamW(model.parameters(), lr=0.1)
 
 logger = ''
-# wandb_logger = Logger(f"{model.name}_test", project='instance-segmentation-project')
-# logger = wandb_logger.get_logger()
+wandb_logger = Logger(f"{model.name}_test", project='instance-segmentation-project')
+logger = wandb_logger.get_logger()
 
 print(model.name)
 print(type(loss_function))
@@ -771,7 +782,7 @@ print(f"weight_decay: {weight_decay}")
 
 print(f'Device: {device}')
 
-average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 10, start_epoch = start_epoch)
+# average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 100, start_epoch = start_epoch)
 # average_losses, train_loss = train_with_instances(model_rcnn, train_dataloader, val_dataloader, loss_function, mask_rcnn_optimiser, logger, epochs = 30, start_epoch = start_epoch)
 
 # print(average_losses)
@@ -782,7 +793,7 @@ print("--------------------AAAAAAAAAA----------------------")
 # with open(f'./checkpoints/unet_model_9701_ep_199.pkl', 'rb') as file:
 #     model = pickle.load(file)
 
-# test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
+test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
 
 # with open(f'./checkpoints/mask_rcnn_test_ep_25.pkl', 'rb') as file:
 #     model_rcnn = pickle.load(file)
