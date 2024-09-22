@@ -9,8 +9,10 @@ class UNet3PlusAttnModel(nn.Module):
         self.name = f"unet3+Attn_model_{''.join(random.sample([str(x) for x in range(10)], 4))}"
         self.filters = [64, 128, 256, 512, 1024]
         # self.filters = [32, 64, 128, 256, 512]
+        # self.filters = [16, 32, 64, 128, 256]
         # self.filters = [128, 256, 512, 1024, 2048]
         self.num_blocks = 5
+
 
         #Encoder Layers
         self.down_conv_1 = DownSample(in_channels = in_channels, out_channels = self.filters[0])
@@ -22,10 +24,10 @@ class UNet3PlusAttnModel(nn.Module):
         self.bottleneck = DoubleConvolution(self.filters[3], self.filters[4])
 
         #Attention Layers
-        self.attn_1 = AttentionGate(self.filters[1])
-        self.attn_2 = AttentionGate(self.filters[2])
-        self.attn_3 = AttentionGate(self.filters[3])
-        self.attn_4 = AttentionGate(self.filters[4])
+        self.attn_1 = AttentionGate(self.filters[0])
+        self.attn_2 = AttentionGate(self.filters[0])
+        self.attn_3 = AttentionGate(self.filters[0])
+        self.attn_4 = AttentionGate(self.filters[0])
 
         #Dropout
         self.dropout = nn.Dropout2d(0.5)
@@ -150,35 +152,45 @@ class UNet3PlusAttnModel(nn.Module):
         # print(f"Bot: {bottleneck.shape}")
 
         #Decoder
+        '''stage 4d'''
         #Inter-skip Connections
         h1_PT_hd4 = self.h1_PT_hd4_conv(self.h1_PT_hd4(down_1))
+        h1_PT_hd4 = self.dropout(h1_PT_hd4)
+
         h2_PT_hd4 = self.h2_PT_hd4_conv(self.h2_PT_hd4(down_2))
+        h2_PT_hd4 = self.dropout(h2_PT_hd4)
+
         h3_PT_hd4 = self.h3_PT_hd4_conv(self.h3_PT_hd4(down_3))
+        h3_PT_hd4 = self.dropout(h3_PT_hd4)
+
         h4_Cat_hd4 = self.h4_Cat_hd4_conv(down_4)
+        h4_Cat_hd4 = self.dropout(h4_Cat_hd4)
 
         hd5_UT_hd4 = self.hd5_UT_hd4_conv(self.hd5_UT_hd4(bottleneck))
 
         # print(f"TEST: {h1_PT_hd4.shape}")
 
         #Attention Gate
-        # inter_attn_hd4 = self.attn_4(hd5_UT_hd4, torch.cat((h1_PT_hd4, h2_PT_hd4, h3_PT_hd4, h4_Cat_hd4), 1))
-        inter_attn_h1_PT_hd4 = self.attn_4(hd5_UT_hd4, h1_PT_hd4)
-        inter_attn_h2_PT_hd4 = self.attn_4(hd5_UT_hd4, h2_PT_hd4)
-        inter_attn_h3_PT_hd4 = self.attn_4(hd5_UT_hd4, h3_PT_hd4)
-        inter_attn_h4_Cat_hd4 = self.attn_4(hd5_UT_hd4, h4_Cat_hd4)
-
-        # _, attn_hd4 = self.attn_4(bottleneck)
-        # hd5_UT_hd4 = self.hd5_UT_hd4_conv(self.hd5_UT_hd4(attn_hd4))
+        # h1_PT_hd4 = self.attn_4(hd5_UT_hd4, h1_PT_hd4)
+        # h2_PT_hd4 = self.attn_4(hd5_UT_hd4, h2_PT_hd4)
+        # h3_PT_hd4 = self.attn_4(hd5_UT_hd4, h3_PT_hd4)
+        # h4_Cat_hd4 = self.attn_4(hd5_UT_hd4, h4_Cat_hd4)
 
         # hd4 = self.conv4d_1(torch.cat((h1_PT_hd4, h2_PT_hd4, h3_PT_hd4, h4_Cat_hd4, hd5_UT_hd4), 1)) # hd4->40*40*UpChannels
-        hd4 = self.conv4d_1(torch.cat((inter_attn_h1_PT_hd4, inter_attn_h2_PT_hd4, inter_attn_h3_PT_hd4, inter_attn_h4_Cat_hd4, hd5_UT_hd4), 1))
+        hd4 = self.conv4d_1(torch.cat((h1_PT_hd4, h2_PT_hd4, h3_PT_hd4, h4_Cat_hd4, hd5_UT_hd4), 1))
 
         # print(f"hd4: {hd4.shape}")
 
+        '''stage 3d'''
         #Inter-skip Connections
         h1_PT_hd3 = self.h1_PT_hd3_conv(self.h1_PT_hd3(down_1))
+        h1_PT_hd3 = self.dropout(h1_PT_hd3)
+
         h2_PT_hd3 = self.h2_PT_hd3_conv(self.h2_PT_hd3(down_2))
+        h2_PT_hd3 = self.dropout(h2_PT_hd3)
+
         h3_Cat_hd3 = self.h3_Cat_hd3_conv(down_3)
+        h3_Cat_hd3 = self.dropout(h3_Cat_hd3)
 
         hd4_UT_hd3 = self.hd4_UT_hd3_conv(self.hd4_UT_hd3(hd4))
 
@@ -186,23 +198,18 @@ class UNet3PlusAttnModel(nn.Module):
         hd5_UT_hd3 = self.hd5_UT_hd3_conv(self.hd5_UT_hd3(bottleneck))
 
         #Attention Gate
-        # inter_attn_hd3 = self.attn_3(hd4_UT_hd3, torch.cat((h1_PT_hd3, h2_PT_hd3, h3_Cat_hd3), 1))
-        # intra_attn_hd3 = self.attn_3(hd4_UT_hd3, hd5_UT_hd3)
+        # h1_PT_hd3 = self.attn_3(hd4_UT_hd3, h1_PT_hd3)
+        # h2_PT_hd3 = self.attn_3(hd4_UT_hd3, h2_PT_hd3)
+        # h3_Cat_hd3 = self.attn_3(hd4_UT_hd3, h3_Cat_hd3)
 
-        inter_attn_h1_PT_hd3 = self.attn_3(hd4_UT_hd3, h1_PT_hd3)
-        inter_attn_h2_PT_hd3 = self.attn_3(hd4_UT_hd3, h2_PT_hd3)
-        inter_attn_h3_Cat_hd3 = self.attn_3(hd4_UT_hd3, h3_Cat_hd3)
-
-        intra_attn_hd5_UT_hd3 = self.attn_3(hd4_UT_hd3, hd5_UT_hd3)
-
-        # _, attn_hd3 = self.attn_3(hd4)
-        # hd4_UT_hd3 = self.hd4_UT_hd3_conv(self.hd4_UT_hd3(attn_hd3))
+        # hd5_UT_hd3 = self.attn_3(hd4_UT_hd3, hd5_UT_hd3)
 
         # hd3 = self.conv3d_1(torch.cat((h1_PT_hd3, h2_PT_hd3, h3_Cat_hd3, hd4_UT_hd3, hd5_UT_hd3), 1)) # hd3->80*80*UpChannels
-        hd3 = self.conv3d_1(torch.cat((inter_attn_h1_PT_hd3, inter_attn_h2_PT_hd3, inter_attn_h3_Cat_hd3, intra_attn_hd5_UT_hd3, hd4_UT_hd3), 1))
+        hd3 = self.conv3d_1(torch.cat((h1_PT_hd3, h2_PT_hd3, h3_Cat_hd3, hd5_UT_hd3, hd4_UT_hd3), 1))
 
         # print(f"hd3: {hd3.shape}")
 
+        '''stage 2d'''
         #Inter-skip Connections
         h1_PT_hd2 = self.h1_PT_hd2_conv(self.h1_PT_hd2(down_1))
         h2_Cat_hd2 = self.h2_Cat_hd2_conv(down_2)
@@ -214,23 +221,18 @@ class UNet3PlusAttnModel(nn.Module):
         hd5_UT_hd2 = self.hd5_UT_hd2_conv(self.hd5_UT_hd2(bottleneck))
 
         #Attention Gate
-        # inter_attn_hd2 = self.attn_2(hd3_UT_hd2, torch.cat((h1_PT_hd2, h2_Cat_hd2), 1))
-        # intra_attn_hd2 = self.attn_2(hd3_UT_hd2, torch.cat((hd4_UT_hd2, hd5_UT_hd2), 1))
+        # h1_PT_hd2 = self.attn_2(hd3_UT_hd2, h1_PT_hd2)
+        # h2_Cat_hd2 = self.attn_2(hd3_UT_hd2, h2_Cat_hd2)
 
-        inter_attn_h1_PT_hd2 = self.attn_2(hd3_UT_hd2, h1_PT_hd2)
-        inter_attn_h2_Cat_hd2 = self.attn_2(hd3_UT_hd2, h2_Cat_hd2)
-
-        intra_attn_hd4_UT_hd2 = self.attn_2(hd3_UT_hd2, hd4_UT_hd2)
-        intra_attn_hd5_UT_hd2 = self.attn_2(hd3_UT_hd2, hd5_UT_hd2)
-
-        # _, attn_hd2 = self.attn_2(hd3)
-        # hd3_UT_hd2 = self.hd3_UT_hd2_conv(self.hd3_UT_hd2(attn_hd2))
+        # hd4_UT_hd2 = self.attn_2(hd3_UT_hd2, hd4_UT_hd2)
+        # hd5_UT_hd2 = self.attn_2(hd3_UT_hd2, hd5_UT_hd2)
 
         # hd2 = self.conv2d_1(torch.cat((h1_PT_hd2, h2_Cat_hd2, hd3_UT_hd2, hd4_UT_hd2, hd5_UT_hd2), 1)) # hd2->160*160*UpChannels
-        hd2 = self.conv2d_1(torch.cat((inter_attn_h1_PT_hd2, inter_attn_h2_Cat_hd2, intra_attn_hd4_UT_hd2, intra_attn_hd5_UT_hd2, hd3_UT_hd2), 1))
+        hd2 = self.conv2d_1(torch.cat((h1_PT_hd2, h2_Cat_hd2, hd4_UT_hd2, hd5_UT_hd2, hd3_UT_hd2), 1))
 
         # print(f"hd2: {hd2.shape}")
 
+        '''stage 1d'''
         #Inter-skip Connection
         h1_Cat_hd1 = self.h1_Cat_hd1_conv(down_1)
 
@@ -242,20 +244,14 @@ class UNet3PlusAttnModel(nn.Module):
         hd5_UT_hd1 = self.hd5_UT_hd1_conv(self.hd5_UT_hd1(bottleneck))
 
         #Attention Gate
-        # inter_attn_hd1 = self.attn_1(hd2_UT_hd1, h1_Cat_hd1)
-        # intra_attn_hd1 = self.attn_1(hd2_UT_hd1, torch.cat((hd3_UT_hd1, hd4_UT_hd1, hd5_UT_hd1), 1))
+        # h1_Cat_hd1 = self.attn_1(hd2_UT_hd1, h1_Cat_hd1)
 
-        inter_attn_h1_Cat_hd1 = self.attn_1(hd2_UT_hd1, h1_Cat_hd1)
-
-        intra_attn_hd3_UT_hd1 = self.attn_1(hd2_UT_hd1, hd3_UT_hd1)
-        intra_attn_hd4_UT_hd1 = self.attn_1(hd2_UT_hd1, hd4_UT_hd1)
-        intra_attn_hd5_UT_hd1 = self.attn_1(hd2_UT_hd1, hd5_UT_hd1)
-
-        # _, attn_hd1 = self.attn_1(hd2)
-        # hd2_UT_hd1 = self.hd2_UT_hd1_conv(self.hd2_UT_hd1(attn_hd1))
+        # hd3_UT_hd1 = self.attn_1(hd2_UT_hd1, hd3_UT_hd1)
+        # hd4_UT_hd1 = self.attn_1(hd2_UT_hd1, hd4_UT_hd1)
+        # hd5_UT_hd1 = self.attn_1(hd2_UT_hd1, hd5_UT_hd1)
 
         # hd1 = self.conv1d_1(torch.cat((h1_Cat_hd1, hd2_UT_hd1, hd3_UT_hd1, hd4_UT_hd1, hd5_UT_hd1), 1)) # hd1->320*320*UpChannels
-        hd1 = self.conv1d_1(torch.cat((inter_attn_h1_Cat_hd1, intra_attn_hd3_UT_hd1, intra_attn_hd4_UT_hd1, intra_attn_hd5_UT_hd1, hd2_UT_hd1), 1))
+        hd1 = self.conv1d_1(torch.cat((h1_Cat_hd1, hd3_UT_hd1, hd4_UT_hd1, hd5_UT_hd1, hd2_UT_hd1), 1))
 
         # print(f"hd1: {hd1.shape}")
 
@@ -311,7 +307,7 @@ class UpSample(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         
-        self.upsampling_layer = nn.ConvTranspose2d(in_channels, in_channels//2, kernel_size = 2, stride = 2)
+        self.upsampling_layer = nn.ConvTranspose2d(in_channels, out_channels, kernel_size = 4, stride = 2)
         self.conv_layer = DoubleConvolution(in_channels, out_channels)
     
     def forward(self, x1, x2):
@@ -350,31 +346,3 @@ class AttentionGate(nn.Module):
         attn = x * psi
 
         return attn
-
-class SelfAttention(nn.Module):
-    def __init__(self, in_channels):
-        super().__init__()
-
-        self.query = nn.Conv2d(in_channels = in_channels, out_channels = in_channels//8, kernel_size = 1)
-        self.key = nn.Conv2d(in_channels = in_channels, out_channels = in_channels//8, kernel_size = 1)
-        self.value = nn.Conv2d(in_channels = in_channels, out_channels = in_channels, kernel_size = 1)
-
-        self.gamma = nn.Parameter(torch.zeros(1))
-
-    def forward(self, x):
-        
-        B, C, W, H = x.shape
-
-        q = self.query(x).view(B, -1, W * H).permute(0, 2, 1)
-        k = self.key(x).view(B, -1, W * H)
-
-        attention = torch.softmax(torch.bmm(q, k), dim = -1)
-
-        v = self.value(x).view(B, -1, W * H)
-
-        output = torch.bmm(v, attention.permute(0, 2, 1))
-        output = output.view(B, C, W, H)
-
-        output = self.gamma * output + x
-
-        return output, attention

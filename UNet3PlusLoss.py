@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import torchvision
+from torchmetrics import JaccardIndex
+from ssim import MS_SSIM
 from math import exp
 
 class UNet3PlusLoss(nn.Module):
@@ -7,20 +10,56 @@ class UNet3PlusLoss(nn.Module):
         super().__init__()
 
         self.device = device
+        self.weight = 0.25
 
-        self.focal_loss = FocalLoss()
-        self.iou_loss = IOULoss()
-        # self.ms_ssim_loss = MS_SSIMLoss(self.device, window_size=11)
+        # self.cross_entropy_loss = nn.CrossEntropyLoss()
+        # self.dice_loss = DiceLoss()
+        # self.focal_loss = FocalLoss()
+        self.iou_loss = JaccardIndex(task = "multiclass", num_classes = 9, ignore_index = 0) #IOULoss()
+        self.ms_ssim_loss = MS_SSIM(data_range = 1, channel = 9, K = (0.01, 0.4), weights = [0.008, 0.124, 0.124, 0.124, 0.124, 0.124, 0.124, 0.124, 0.124]) #MS_SSIMLoss(self.device)
 
     def forward(self, y_pred, y_true):
 
-        focal_loss = self.focal_loss(y_pred, y_true)
-        iou_loss = self.iou_loss(y_pred, y_true)
-        # ms_ssim_loss = self.ms_ssim_loss(y_pred, y_true)
+        # y_pred = torch.nn.Softmax(dim=1)(y_pred) #torch.nn.functional.sigmoid(y_pred)
 
-        loss = focal_loss + iou_loss #+ ms_ssim_loss
+        # cross_entropy_loss = self.cross_entropy_loss(y_pred, y_true)
+        # dice_loss = self.dice_loss(y_pred, y_true)
+        focal_loss = torchvision.ops.sigmoid_focal_loss(y_pred, y_true, reduction = "mean") #self.focal_loss(y_pred, y_true)
+        iou_loss = self.iou_loss(torch.nn.Softmax(dim=1)(y_pred), y_true)
+        ms_ssim_loss = self.ms_ssim_loss(torch.nn.Softmax(dim=1)(y_pred), y_true)
+
+        # print("A")
+        # print(focal_loss)
+        # print(iou_loss)
+        # print(ms_ssim_loss)
+
+        # if focal_loss < 0:
+        #     print("Focal Negative")
+        # elif iou_loss < 0:
+        #     print("IOU Negative")
+        # elif ms_ssim_loss < 0:
+        #     print("MS SSIM Negative")
+
+        loss = focal_loss + iou_loss + ms_ssim_loss #(dice_loss * self.weight) + (cross_entropy_loss * (1 - self.weight)) #focal_loss + iou_loss #+ ms_ssim_loss
 
         return torch.sum(loss)
+
+class DiceLoss(nn.Module):
+    def __init__(self, epsilon = 1e-6):
+        super().__init__()
+
+        self.epsilon = epsilon
+
+    def forward(self, y_pred, y_true):
+
+        # y_pred = torch.nn.functional.sigmoid(y_pred)
+
+        intersection = torch.sum(y_pred * y_true)
+        union = torch.sum(y_pred) + torch.sum(y_true)
+
+        dice = (2.0 * (intersection + self.epsilon)) / (union + self.epsilon)
+
+        return 1.0 - dice
 
 class FocalLoss(nn.Module):
     def __init__(self, weight = None, gamma = 2, reduction = 'mean'):
@@ -28,6 +67,8 @@ class FocalLoss(nn.Module):
 
         self.weight = weight
         self.gamma = gamma
+
+        # self.cross_entropy_loss = nn.CrossEntropyLoss()
 
     def forward(self, y_pred, y_true):
         loss = nn.functional.cross_entropy(y_pred, y_true)
@@ -50,19 +91,20 @@ class IOULoss(nn.Module):
         intersection = torch.sum(y_pred_flat * y_true_flat)
         union = y_pred_flat.sum() + y_true_flat.sum() - intersection
 
-        # thresholded = torch.clamp(20 * (iou - 0.5), 0, 10).ceil() / 10
+        iou = (intersection + self.epsilon) / (union + self.epsilon)
 
-        return 1 - (intersection + self.epsilon) / (union + self.epsilon)
+        thresholded = torch.clamp(20 * (iou - 0.5), 0, 10).ceil() / 10
+
+        return 1 - iou
 
 class MS_SSIMLoss(nn.Module):
-    def __init__(self, device, window_size=11, size_average=True, channel=3):
+    def __init__(self, device, window_size=11, size_average=True):
         super().__init__()
 
         self.device = device
 
         self.window_size = window_size
         self.size_average = size_average
-        self.channel = channel
 
         self.C1 = 1e-4
         self.C2 = 9e-4
@@ -81,7 +123,7 @@ class MS_SSIMLoss(nn.Module):
 
     def ssim(self, y_pred, y_true, window_size=11, window=None, size_average=True, full=False, val_range=None):
         min_val = 0
-        max_val = 8
+        max_val = 1
 
         L = max_val - min_val
 
@@ -102,14 +144,17 @@ class MS_SSIMLoss(nn.Module):
         sigma2_sq = torch.nn.functional.conv2d(y_true * y_true, window, padding = 0, groups = c) - mu2_sq
         sigma12 = torch.nn.functional.conv2d(y_pred * y_true, window, padding = 0, groups = c) - mu1_mu2
 
-        # self.C1 = (0.01 * L) ** 2
-        # self.C2 = (0.03 * L) ** 2
+        self.C1 = (0.01 * L) ** 2
+        self.C2 = (0.03 * L) ** 2
 
         v1 = 2.0 * sigma12 + self.C2
         v2 = sigma1_sq + sigma2_sq + self.C2
         cs = v1 / v2
 
         ssim_map = ((2 * mu1_mu2 + self.C1) * v1) / ((mu1_sq + mu2_sq + self.C1) * v2)
+
+        # ssim_map = (ssim_map + 1) / 2
+        # cs = (cs + 1) / 2
 
         return ssim_map.mean(), cs.mean()
 
@@ -136,46 +181,10 @@ class MS_SSIMLoss(nn.Module):
 
         return torch.prod(pow1[:-1]) * pow2[-1]
 
-    def forward(self, y_pred, y_true, beta = 1,gamma = 1):
+    def forward(self, y_pred, y_true):
+
+        y_pred = torch.nn.functional.sigmoid(y_pred)
 
         return self.msssim(y_pred, y_true, window_size = self.window_size, size_average = self.size_average)
-
-    # def window(self, image, dim = 2, size = 2, step = None):
-
-    #     if step is None:
-    #         step = size
-
-    #     window = image.unfold(dim, size, step)
-    #     window = window.unfold(dim + 1, size, step)
-
-    #     return window
-
-    # def forward(self, y_pred, y_true, beta = 1,gamma = 1):
-        
-    #     pred_window = self.window(y_pred)
-    #     true_window = self.window(y_true)
-
-    #     total_ssim = torch.zeros(y_pred.shape[0]).to(device = self.device)
-
-    #     for p_id in range(pred_window.shape[2]):
-    #         for t_id in range(true_window.shape[3]):
-
-    #             m1 = torch.mean(pred_window[:, :, p_id, t_id], dim = (1, 2, 3))
-    #             m2 = torch.mean(true_window[:, :, p_id, t_id], dim = (1, 2, 3))
-
-    #             s1 = torch.std(pred_window[:, :, p_id, t_id], dim = (1, 2, 3))
-    #             s2 = torch.std(true_window[:, :, p_id, t_id], dim = (1, 2, 3))
-
-    #             C = (2 * m1 * m2 + self.C1) / (m1 * m1 + m2 * m2 + self.C1)
-    #             S = (2 * m1 * m2 + self.C2) / (s1 * s1 + s2 * s2 + self.C2)
-
-    #             window_sim = C**beta * S**gamma
-
-    #             window_sim = window_sim.to(device = self.device)
-
-    #             if not torch.any(window_sim.isnan()) :
-    #                 total_ssim += window_sim
-
-    #     return total_ssim / (pred_window.shape[2] * true_window.shape[3] + 1e-4)
 
 

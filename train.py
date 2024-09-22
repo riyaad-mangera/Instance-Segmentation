@@ -11,6 +11,8 @@ import matplotlib.image as mat_img
 import wandb
 import pickle
 from matplotlib.colors import ListedColormap
+from torchview import draw_graph
+import graphviz
 from cityscapesscripts.helpers.labels import labels, name2label
 from models import UNet_Model, UNet3PlusAttn_Model, MaskRCNN_Model#, YOLO_Model
 from DiceLoss import DiceLoss
@@ -29,7 +31,7 @@ else:
 
 print(f'Device: {device}')
 
-TRAIN_BATCH_SIZE = 2
+TRAIN_BATCH_SIZE = 1
 TEST_BATCH_SIZE = 1
 VAL_BATCH_SIZE = 1
 
@@ -711,7 +713,7 @@ instances_only = False
 
 train_dataset = CityScapesDataset(train_imgs, train_masks, train_polygons, sample_frac = 10, instances_only = instances_only) # 500)
 test_dataset = CityScapesDataset(test_imgs, test_masks, test_polygons, sample_frac = 20, instances_only = instances_only)
-val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, sample_frac = 20, instances_only = instances_only) # 5)
+val_dataset = CityScapesDataset(val_imgs, val_masks, val_polygons, sample_frac = 5, instances_only = instances_only) # 5)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE,
                 'shuffle': True,
@@ -741,8 +743,8 @@ val_dataloader = DataLoader(val_dataset, **val_params)
 lr = 1e-4 # 3e-5 # 1e-3 for mask rcnn (maybe 1e-5?)
 weight_decay = 0
 
-model = UNet_Model.UNetModel(in_channels = 3, num_classes = 9) # 9) # 21)
-# model = UNet3PlusAttn_Model.UNet3PlusAttnModel(in_channels = 3, num_classes = 9)
+# model = UNet_Model.UNetModel(in_channels = 3, num_classes = 9) # 9) # 21)
+model = UNet3PlusAttn_Model.UNet3PlusAttnModel(in_channels = 3, num_classes = 9)
 
 model = load_checkpoint("unet3+Attn_model_5319_ep_50")
 
@@ -772,8 +774,8 @@ optimiser = torch.optim.Adam(model.parameters(), lr = lr, weight_decay = weight_
 # optimiser = torch.optim.AdamW(model.parameters(), lr=0.1)
 
 logger = ''
-wandb_logger = Logger(f"{model.name}_test", project='instance-segmentation-project')
-logger = wandb_logger.get_logger()
+# wandb_logger = Logger(f"{model.name}_test", project='instance-segmentation-cityscapes')
+# logger = wandb_logger.get_logger()
 
 print(model.name)
 print(type(loss_function))
@@ -793,7 +795,14 @@ print("--------------------AAAAAAAAAA----------------------")
 # with open(f'./checkpoints/unet_model_9701_ep_199.pkl', 'rb') as file:
 #     model = pickle.load(file)
 
-test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
+# test_losses, test_dice_coefs, y_pred = test(model, test_dataloader, loss_function, logger)
+model = load_checkpoint("unet3+Attn_model_1743_ep_49")
+# print(model)
+
+model_graph = draw_graph(model, input_size=(1, 3, 512, 256), roll = True)
+graph = model_graph.visual_graph
+# print(graph)
+graph.view("UNet3+Attn_Graph_Check_2", directory="test_masks")
 
 # with open(f'./checkpoints/mask_rcnn_test_ep_25.pkl', 'rb') as file:
 #     model_rcnn = pickle.load(file)
