@@ -14,7 +14,7 @@ from matplotlib.colors import ListedColormap
 from torchview import draw_graph
 import graphviz
 from cityscapesscripts.helpers.labels import labels, name2label
-from models import UNet_Model, UNet3PlusAttn_Model, MaskRCNN_Model#, YOLO_Model
+from models import UNet_Model, UNet3PlusAttn_Model, MaskRCNN_Model, UNetR3PlusAttn_Model, SwinNet3PlusModel #, YOLO_Model
 from DiceLoss import DiceLoss
 from UNet3PlusLoss import UNet3PlusLoss
 from PIL import Image
@@ -744,9 +744,11 @@ lr = 1e-4 # 3e-5 # 1e-3 for mask rcnn (maybe 1e-5?)
 weight_decay = 0
 
 # model = UNet_Model.UNetModel(in_channels = 3, num_classes = 9) # 9) # 21)
-model = UNet3PlusAttn_Model.UNet3PlusAttnModel(in_channels = 3, num_classes = 9)
+# model = UNet3PlusAttn_Model.UNet3PlusAttnModel(in_channels = 3, num_classes = 9)
+# model = UNetR3PlusAttn_Model.UNetSwin(in_channels = 3, num_classes = 9)
+model = SwinNet3PlusModel.SwinNet3PlusModel(in_channels = 3, num_classes = 9)
 
-model = load_checkpoint("unet3+Attn_model_5319_ep_50")
+# model = load_checkpoint("unet3+Attn_model_5319_ep_50")
 
 # model_rcnn = MaskRCNN_Model.MaskRCNN_Model(model = None, checkpoint = None, num_classes = 9).get_model()
 
@@ -784,7 +786,7 @@ print(f"weight_decay: {weight_decay}")
 
 print(f'Device: {device}')
 
-# average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 100, start_epoch = start_epoch)
+average_losses, average_dice_coef = train(model, train_dataloader, val_dataloader, loss_function, optimiser, logger, epochs = 100, start_epoch = start_epoch)
 # average_losses, train_loss = train_with_instances(model_rcnn, train_dataloader, val_dataloader, loss_function, mask_rcnn_optimiser, logger, epochs = 30, start_epoch = start_epoch)
 
 # print(average_losses)
@@ -799,10 +801,10 @@ print("--------------------AAAAAAAAAA----------------------")
 model = load_checkpoint("unet3+Attn_model_1743_ep_49")
 # print(model)
 
-model_graph = draw_graph(model, input_size=(1, 3, 512, 256), roll = True)
-graph = model_graph.visual_graph
-# print(graph)
-graph.view("UNet3+Attn_Graph_Check_2", directory="test_masks")
+# model_graph = draw_graph(model, input_size=(1, 3, 512, 256), roll = True)
+# graph = model_graph.visual_graph
+# # print(graph)
+# graph.view("UNet3+Attn_Graph_Check_2", directory="test_masks")
 
 # with open(f'./checkpoints/mask_rcnn_test_ep_25.pkl', 'rb') as file:
 #     model_rcnn = pickle.load(file)
