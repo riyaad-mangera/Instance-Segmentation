@@ -31,7 +31,7 @@ else:
 
 print(f'Device: {device}')
 
-TRAIN_BATCH_SIZE = 1
+TRAIN_BATCH_SIZE = 2
 TEST_BATCH_SIZE = 1
 VAL_BATCH_SIZE = 1
 
@@ -122,7 +122,7 @@ def train(model, train_loader, val_loader, loss_function, optimiser, logger, epo
 
             train_loss.append(loss.item())
 
-            # print(loss)
+            print(loss)
 
             with torch.no_grad():
                 model.eval()
@@ -765,10 +765,10 @@ start_epoch = 0
 weights = torch.tensor([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 
                         5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 
                         0.0, 0.0])
-loss_function = torch.nn.CrossEntropyLoss()
+# loss_function = torch.nn.CrossEntropyLoss()
 # loss_function = DiceLoss()
 # loss_function = torch.nn.MSELoss()
-# loss_function = UNet3PlusLoss(device = device)
+loss_function = UNet3PlusLoss(device = device)
 
 optimiser = torch.optim.Adam(model.parameters(), lr = lr, weight_decay = weight_decay) #1e-3, weight_decay = 0)
 # mask_rcnn_optimiser = torch.optim.Adam(model_rcnn.parameters(), lr = lr, weight_decay = weight_decay)

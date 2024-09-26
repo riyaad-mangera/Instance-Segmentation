@@ -61,7 +61,7 @@ class UNetModel(nn.Module):
         #Final Convolution
         output = self.final_conv(up_4)
 
-        # print(output.shape)
+        print(output.shape)
 
         return output
 
