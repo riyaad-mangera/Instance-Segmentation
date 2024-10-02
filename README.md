@@ -16,6 +16,10 @@ Please note that before training this dataset, a few steps are recommended:
         - Train features example: root/dataset/features/leftImg8bit/train/*city_name*/*image.png*
         - Train labels example: root/dataset/labels/gtFine_trainvaltest/gtFine/train/*city_name*/*image.png*
 
+    - For training with the YOLOv8 model, please ensure you run the convert.py file to generate the ground truth txt files, and place these files in the following format
+        - Train features example: root/datasets/datasets/train/images/*image.png*
+        - Train labels example: root/datasets/datasets/train/labels/*labels.txt*
+
 To train or test this model, first install the required libraries listed in the requirements.txt file, or requirements_yolo.txt to train the dataset on a YOLOv8 model, after which the model the train.py file can be edited to perform the required train or testing task.
 
 Logs of previous training runs of these models can be found in the following Wandb loggers:
