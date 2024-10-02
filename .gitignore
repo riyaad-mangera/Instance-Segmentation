@@ -7,3 +7,4 @@ scripts/
 runs/
 /bus.jpg
 /yolov8n.pt
+yolo_env/
