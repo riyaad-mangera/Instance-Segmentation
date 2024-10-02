@@ -9,22 +9,20 @@ class UNetModel(nn.Module):
         self.name = f"unet_model_{''.join(random.sample([str(x) for x in range(10)], 4))}"
 
         self.filters = [64, 128, 256, 512, 1024]
-        # self.filters = [128, 256, 512, 1024, 2048]
-        # self.filters = [256, 512, 1024, 2048, 2046]
 
-        #Contracting Path
+        #Encoder
         self.down_conv_1 = DownSample(in_channels = in_channels, out_channels = self.filters[0])
         self.down_conv_2 = DownSample(in_channels = self.filters[0], out_channels = self.filters[1])
         self.down_conv_3 = DownSample(in_channels = self.filters[1], out_channels = self.filters[2])
         self.down_conv_4 = DownSample(in_channels = self.filters[2], out_channels = self.filters[3])
 
-        #Mid Point
+        #Bottleneck
         self.bottleneck = DoubleConvolution(self.filters[3], self.filters[4])
 
         #Dropout
         self.dropout = nn.Dropout2d(0.5)
 
-        #Expanding Path
+        #Decoder
         self.up_conv_1 = UpSample(in_channels = self.filters[4], out_channels = self.filters[3])
         self.up_conv_2 = UpSample(in_channels = self.filters[3], out_channels = self.filters[2])
         self.up_conv_3 = UpSample(in_channels = self.filters[2], out_channels = self.filters[1])
@@ -49,9 +47,6 @@ class UNetModel(nn.Module):
         bottleneck = self.bottleneck(pool_4)
         bottleneck = self.dropout(bottleneck)
 
-        # print(bottleneck.shape)
-        # print(down_4.shape)
-
         #Decoder
         up_1 = self.up_conv_1(bottleneck, down_4)
         up_2 = self.up_conv_2(up_1, down_3)
@@ -60,8 +55,6 @@ class UNetModel(nn.Module):
 
         #Final Convolution
         output = self.final_conv(up_4)
-
-        print(output.shape)
 
         return output
 

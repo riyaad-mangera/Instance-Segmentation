@@ -9,7 +9,7 @@ class MaskRCNN_Model():
         self.checkpoint = checkpoint
 
         if model == None:
-            self.model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(pretrained = False)
+            self.model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(pretrained = True)
 
         else:
             self.model = model
