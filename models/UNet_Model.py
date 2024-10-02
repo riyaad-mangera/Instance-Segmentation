@@ -2,6 +2,12 @@ import torch
 import torch.nn as nn
 import random
 
+"""The standard implementation of the U-Net model below
+    was created using code developed by FernandoPC25 (2024),
+    with minor modifications done to ensure the model
+    functions correctly, as well as some attempts to
+    improve the performance of the model.
+"""
 class UNetModel(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()

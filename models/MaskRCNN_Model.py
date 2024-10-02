@@ -3,6 +3,9 @@ import random
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
+"""The implementation of the Mask R-CNN model was implemented using
+    the standard method defined in the PyTorch documentation (pytorch.org, n.d.).
+"""
 class MaskRCNN_Model():
     def __init__(self, model = None, checkpoint = None, num_classes = 8):
 

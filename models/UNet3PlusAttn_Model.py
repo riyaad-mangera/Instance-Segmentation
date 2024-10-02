@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import random
 
+"""The following model was based off a combination of the
+    Unet3+ model developed by ZJUGiveLab (2020), with modificiations
+    added to introduce attention gates. As such, the structure of the model, 
+    as well as the names of some variable components, are left as is for clarity.
+"""
 class UNet3PlusAttnModel(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
@@ -312,6 +317,10 @@ class UpSample(nn.Module):
 
         return self.conv_layer(x)
 
+"""The attention gate for this model was implemented using code
+    developed by sfczekalski (2020), with minor modifications
+    done to make it compatible with my implementations.
+"""
 class AttentionGate(nn.Module):
     def __init__(self, in_channels):
         super().__init__()

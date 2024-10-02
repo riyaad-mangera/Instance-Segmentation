@@ -1,3 +1,8 @@
+"""This file was developed by mcordts (2016) as a helper method
+    to create ground truth masks whereby the pixels are encoded
+    with the instance class of each object. This file was left unchanged.
+"""
+
 #!/usr/bin/python
 #
 # Converts the polygonal annotations of the Cityscapes dataset

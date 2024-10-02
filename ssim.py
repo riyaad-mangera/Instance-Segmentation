@@ -7,6 +7,11 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
+"""This file was created by Fang (2019) as a method of calculating
+    the MS-SSIM value of two images. This file was used to help
+    implement MS-SSIM loss, and is left unchanged from its original
+    implementation.
+"""
 
 def _fspecial_gauss_1d(size: int, sigma: float) -> Tensor:
     r"""Create 1-D gauss kernel

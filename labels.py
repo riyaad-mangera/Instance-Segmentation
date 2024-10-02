@@ -1,3 +1,9 @@
+"""This file was created by mcordts (2016) as a helper method
+    to identify and modify the labels of each object class within the
+    Cityscapes dataset. This file has been left unchanged from its
+    original implementation.
+"""
+
 #!/usr/bin/python
 #
 # Cityscapes labels

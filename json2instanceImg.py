@@ -1,3 +1,8 @@
+"""This file was developed by mcordts (2016) as a helper method
+    to create ground truth masks from the JSON polygon files
+    provided by Cityscapes. This file was left unchanged.
+"""
+
 #!/usr/bin/python
 #
 # Reads labels as polygons in JSON format and converts them to instance images,

@@ -2,6 +2,13 @@ import os
 import json
 import sys
 
+"""This file, developed by Hyounjun-Oh (2024), can be used to convert
+    the ground truth masks of the Cityscapes Dataset into a VOLOv8 compatible
+    format. The majority of the code is left as is by the original developer,
+    with some minor modificaitons done to ensure that the ground truth labels
+    and files were compatible with my project.
+"""
+
 def polygon_to_normalized_coords(polygon, img_width, img_height):
     normalized_coords = []
     for point in polygon:

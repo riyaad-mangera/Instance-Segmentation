@@ -3,16 +3,21 @@ import torch.nn as nn
 import random
 import timm
 
+"""The Decoder Layers of this model were based off of the 
+    Unet3+ model developed by ZJUGiveLab (2020). As such,
+    the structure of the Decoder, as well as the names of some
+    variable components, are left as is for clarity.
+"""
 class SwinNet3PlusModel(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
 
         self.name = f"SwinNet3+_model_{''.join(random.sample([str(x) for x in range(10)], 4))}"
 
-        self.filters = [128, 256, 512, 1024, 2048, 128]
+        self.filters = [128, 256, 512, 1024, 2048, 128] # Last value determines size of Decoder filters
 
         # Swin Encoder as backbone
-        self.encoder = SwinEncoder(image_size = (512, 1024)) #(256, 512)) (2048, 1024)
+        self.encoder = SwinEncoder(image_size = (512, 1024)) #(256, 512) Use if encountering memory errors
 
         self.bottleneck = DoubleConvolution(self.filters[3], self.filters[4])
 
@@ -158,7 +163,6 @@ class SwinNet3PlusModel(nn.Module):
 
         hd2 = self.conv2d_1(torch.cat((h1_PT_hd2, h2_Cat_hd2, hd3_UT_hd2, hd4_UT_hd2, hd5_UT_hd2), 1))
 
-
         '''stage 1d'''
         #Inter-skip Connection
         h1_Cat_hd1 = self.h1_Cat_hd1_conv(down_1)
@@ -214,16 +218,7 @@ class SingleConvolution(nn.Module):
     def forward(self, x):
         return self.conv_layers(x)
 
-class UpSample(nn.Module):
-    def __init__(self, in_channels, out_channels, scale_factor):
-        super().__init__()
-        
-        self.upsampling_layer = nn.ConvTranspose2d(in_channels, out_channels, kernel_size = scale_factor, stride = scale_factor)
-    
-    def forward(self, x):
-
-        return self.upsampling_layer(x)
-
+# Retrieve a pre-trained SwinV2 backbone and extract only the outputs of each of its 4 blocks
 class SwinEncoder(nn.Module):
     def __init__(self, image_size):
         super().__init__()

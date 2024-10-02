@@ -5,6 +5,10 @@ from torch import Tensor
 from torch import nn
 from torch.nn import functional as F
 
+"""The implementation of Focal Loss in this project was done using the
+    following file developed by AdeelH (2020). This file has been
+    unchanged from its original implementation.
+"""
 
 class FocalLoss(nn.Module):
     """ Focal Loss, as described in https://arxiv.org/abs/1708.02002.
